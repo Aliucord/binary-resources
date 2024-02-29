@@ -71,7 +71,7 @@ public final class BinaryResourceFileTest {
     byte[] arsc2Bytes = arsc.toByteArray();
     BinaryResourceFile arsc2 = new BinaryResourceFile(arsc2Bytes);
 
-    String arsc2String = ((ResourceTableChunk)arsc.getChunks().get(0))
+    String arsc2String = ((ResourceTableChunk)arsc2.getChunks().get(0))
             .getStringPool()
             .getString(newStringIdx);
 
