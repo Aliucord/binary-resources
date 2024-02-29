@@ -3,6 +3,9 @@ plugins {
     id("com.android.library") version "8.2.1"
 }
 
+group = "com.aliucord.apkparser"
+version = "1.0.0"
+
 android {
     compileSdk = 34
     namespace = "com.aliucord.apkparser.binaryresources"
@@ -31,7 +34,7 @@ android {
 }
 
 dependencies {
-    implementation("com.google.guava:guava:33.0.0-android")
+    api("com.google.guava:guava:33.0.0-android")
     compileOnly("org.jetbrains:annotations:23.0.0")
 
     testImplementation("junit:junit:4.13.2")
@@ -60,17 +63,8 @@ afterEvaluate {
 
         publications {
             register(project.name, MavenPublication::class.java) {
-                group = "com.aliucord.apkparser"
-                version = "1.0.0"
-
-                artifact(tasks["bundleReleaseAar"])
-                artifact(tasks["sourcesJar"])
+                from(components["release"])
             }
         }
     }
-}
-
-task<Jar>("sourcesJar") {
-    from(android.sourceSets.named("main").get().java.srcDirs)
-    archiveClassifier.set("sources")
 }
