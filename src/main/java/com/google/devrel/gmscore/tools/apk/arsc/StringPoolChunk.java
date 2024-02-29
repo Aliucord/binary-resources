@@ -16,6 +16,7 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import android.os.Build;
 import org.jetbrains.annotations.Nullable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -99,16 +100,35 @@ public final class StringPoolChunk extends Chunk {
     styles.addAll(readStyles(buffer, offset + stylesStart, styleCount));
   }
 
-//  /**
-//   * Returns the 0-based index of the first occurrence of the given string, or -1 if the string is
-//   * not in the pool. This runs in O(n) time.
-//   *
-//   * @param string The string to check the pool for.
-//   * @return Index of the string, or -1 if not found.
-//   */
-//  public int indexOf(String string) {
-//    return strings.indexOf(string);
-//  }
+  /**
+   * Returns the 0-based index of the first occurrence of the given string, or -1 if the string is
+   * not in the pool. This runs in O(n) time.
+   * @param string The string to check the pool for.
+   * @return Index of the string, or -1 if not found.
+   */
+  public int indexOf(String string) {
+    byte[] bytes = srcBuffer.array();
+    byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
+
+    for (int i = 0; i < stringOffsets.length; i++) {
+      if (bytes.length < stringOffsets[i] + encodedString.length) continue;
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (Arrays.equals(
+                bytes, stringOffsets[i], stringOffsets[i] + encodedString.length,
+                encodedString, 0, encodedString.length)) {
+          return i;
+        }
+      } else {
+        if (ByteBuffer.wrap(bytes, stringOffsets[i], encodedString.length)
+                .equals(ByteBuffer.wrap(encodedString))) {
+          return i;
+        }
+      }
+    }
+
+    return -1;
+  }
 
   /**
    * Returns a string at the given (0-based) index.
