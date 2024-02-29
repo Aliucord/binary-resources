@@ -140,6 +140,28 @@ public final class BinaryResourceString {
     return type == Type.UTF8 ? decodeLengthUTF8(buffer, offset) : decodeLengthUTF16(buffer, offset);
   }
 
+  /**
+   * Calculate the full string length in bytes (length markers + body).
+   * Refer to {@link BinaryResourceString#decodeString(ByteBuffer, int, Type)} for more info.
+   */
+  static int decodeFullLength(ByteBuffer buffer, int offset, Type type) {
+    int totalLength;
+
+    int charCount = decodeLength(buffer, offset, type);
+    int charCountLength = computeLengthOffset(charCount, type);
+    offset += charCountLength;
+
+    if (type == Type.UTF8) {
+      int byteCount = decodeLength(buffer, offset, type);
+      int byteCountLength = computeLengthOffset(byteCount, type);
+      totalLength = charCountLength + byteCountLength + byteCount;
+    } else { // UTF-16
+      totalLength = (charCountLength + charCount) * 2;
+    }
+
+    return totalLength;
+  }
+
   private static int decodeLengthUTF8(ByteBuffer buffer, int offset) {
     // UTF-8 strings use a clever variant of the 7-bit integer for packing the string length.
     // If the first byte is >= 0x80, then a second byte follows. For these values, the length

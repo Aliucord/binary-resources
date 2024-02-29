@@ -141,17 +141,17 @@ public final class PackageChunk extends ChunkWithChunks {
     return types.get(id);
   }
 
-  /**
-   * For a given type, returns the {@link TypeChunk} objects that match that type
-   * (e.g. "attr", "id", "string", ...).
-   *
-   * @param type The type to return {@link TypeChunk} objects for.
-   * @return The matching {@link TypeChunk} objects, or an empty collection if there are none.
-   */
-  public Collection<TypeChunk> getTypeChunks(String type) {
-    StringPoolChunk typeStringPool = Preconditions.checkNotNull(getTypeStringPool());
-    return getTypeChunks(typeStringPool.indexOf(type) + 1);  // Convert 0-based index to 1-based
-  }
+//  /**
+//   * For a given type, returns the {@link TypeChunk} objects that match that type
+//   * (e.g. "attr", "id", "string", ...).
+//   *
+//   * @param type The type to return {@link TypeChunk} objects for.
+//   * @return The matching {@link TypeChunk} objects, or an empty collection if there are none.
+//   */
+//  public Collection<TypeChunk> getTypeChunks(String type) {
+//    StringPoolChunk typeStringPool = Preconditions.checkNotNull(getTypeStringPool());
+//    return getTypeChunks(typeStringPool.indexOf(type) + 1);  // Convert 0-based index to 1-based
+//  }
 
   /** Returns all {@link TypeSpecChunk} in this package. */
   public Collection<TypeSpecChunk> getTypeSpecChunks() {
@@ -163,14 +163,14 @@ public final class PackageChunk extends ChunkWithChunks {
     return Preconditions.checkNotNull(typeSpecs.get(id));
   }
 
-  /**
-   * For a given {@code type}, returns the {@link TypeSpecChunk} that matches it
-   * (e.g. "attr", "id", "string", ...).
-   */
-  public TypeSpecChunk getTypeSpecChunk(String type) {
-    StringPoolChunk typeStringPool = Preconditions.checkNotNull(getTypeStringPool());
-    return getTypeSpecChunk(typeStringPool.indexOf(type) + 1);  // Convert 0-based index to 1-based
-  }
+//  /**
+//   * For a given {@code type}, returns the {@link TypeSpecChunk} that matches it
+//   * (e.g. "attr", "id", "string", ...).
+//   */
+//  public TypeSpecChunk getTypeSpecChunk(String type) {
+//    StringPoolChunk typeStringPool = Preconditions.checkNotNull(getTypeStringPool());
+//    return getTypeSpecChunk(typeStringPool.indexOf(type) + 1);  // Convert 0-based index to 1-based
+//  }
 
   /** Returns the name of this package. */
   public String getPackageName() {

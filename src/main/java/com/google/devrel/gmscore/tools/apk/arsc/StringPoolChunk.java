@@ -58,11 +58,14 @@ public final class StringPoolChunk extends Chunk {
    */
   private final int styleCount;
 
-  /**
-   * The strings ordered as they appear in the arsc file. e.g. strings.get(1234) gets the 1235th
-   * string in the arsc file.
-   */
-  private final List<String> strings = new ArrayList<>();
+//  /**
+//   * The strings ordered as they appear in the arsc file. e.g. strings.get(1234) gets the 1235th
+//   * string in the arsc file.
+//   */
+//  private final List<String> strings = new ArrayList<>();
+
+  private int[] stringOffsets;
+  private ByteBuffer srcBuffer;
 
   /**
    * These styles have a 1:1 relationship with the strings. For example, styles.get(3) refers to
@@ -90,20 +93,22 @@ public final class StringPoolChunk extends Chunk {
   @Override
   protected void init(ByteBuffer buffer) {
     super.init(buffer);
-    strings.addAll(readStrings(buffer, offset + stringsStart, stringCount));
+
+    srcBuffer = buffer;
+    stringOffsets = readStringOffsets(buffer, offset + stringsStart, stringCount);
     styles.addAll(readStyles(buffer, offset + stylesStart, styleCount));
   }
 
-  /**
-   * Returns the 0-based index of the first occurrence of the given string, or -1 if the string is
-   * not in the pool. This runs in O(n) time.
-   *
-   * @param string The string to check the pool for.
-   * @return Index of the string, or -1 if not found.
-   */
-  public int indexOf(String string) {
-    return strings.indexOf(string);
-  }
+//  /**
+//   * Returns the 0-based index of the first occurrence of the given string, or -1 if the string is
+//   * not in the pool. This runs in O(n) time.
+//   *
+//   * @param string The string to check the pool for.
+//   * @return Index of the string, or -1 if not found.
+//   */
+//  public int indexOf(String string) {
+//    return strings.indexOf(string);
+//  }
 
   /**
    * Returns a string at the given (0-based) index.
@@ -112,12 +117,12 @@ public final class StringPoolChunk extends Chunk {
    * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
    */
   public String getString(int index) {
-    return strings.get(index);
+    return BinaryResourceString.decodeString(srcBuffer, stringOffsets[index], getStringType());
   }
 
   /** Returns the number of strings in this pool. */
   public int getStringCount() {
-    return strings.size();
+    return stringCount;
   }
 
   /**
@@ -147,7 +152,7 @@ public final class StringPoolChunk extends Chunk {
 
   /** Returns the number of bytes needed for offsets based on {@code strings} and {@code styles}. */
   private int getOffsetSize() {
-    return (strings.size() + styles.size()) * 4;
+    return (stringOffsets.length + styles.size()) * 4;
   }
 
   /**
@@ -168,19 +173,23 @@ public final class StringPoolChunk extends Chunk {
     return (flags & SORTED_FLAG) != 0;
   }
 
-  private List<String> readStrings(ByteBuffer buffer, int offset, int count) {
-    List<String> result = new ArrayList<>();
+  private int[] readStringOffsets(ByteBuffer buffer, int offset, int count) {
+    int[] results = new int[count];
     int previousOffset = -1;
+
     // After the header, we now have an array of offsets for the strings in this pool.
     for (int i = 0; i < count; ++i) {
       int stringOffset = offset + buffer.getInt();
-      result.add(BinaryResourceString.decodeString(buffer, stringOffset, getStringType()));
+
       if (stringOffset <= previousOffset) {
         isOriginalDeduped = true;
       }
       previousOffset = stringOffset;
+
+      results[i] = stringOffset;
     }
-    return result;
+
+    return results;
   }
 
   private List<StringPoolStyle> readStyles(ByteBuffer buffer, int offset, int count) {
@@ -196,25 +205,31 @@ public final class StringPoolChunk extends Chunk {
 
   private int writeStrings(DataOutput payload, ByteBuffer offsets, boolean shrink)
       throws IOException {
-    int stringOffset = 0;
-    Map<String, Integer> used = new HashMap<>();  // Keeps track of strings already written
-    for (String string : strings) {
-      // Dedupe everything except stylized strings, unless shrink is true (then dedupe everything)
-      if (used.containsKey(string) && (shrink || isOriginalDeduped)) {
-        Integer offset = used.get(string);
-        offsets.putInt(offset == null ? 0 : offset);
+    int currentOffset = 0;
+
+    // existing string offset -> new string offset
+    Map<Integer, Integer> used = new HashMap<>(getStringCount());
+
+    for (int stringOffset : stringOffsets) {
+      Integer existingOffset;
+      if ((shrink || isOriginalDeduped) && (existingOffset = used.get(stringOffset)) != null) {
+        offsets.putInt(existingOffset);
       } else {
-        byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
-        payload.write(encodedString);
-        used.put(string, stringOffset);
-        offsets.putInt(stringOffset);
-        stringOffset += encodedString.length;
+        if ((shrink || isOriginalDeduped)) {
+          used.put(stringOffset, currentOffset);
+        }
+
+        int stringLength = BinaryResourceString.decodeFullLength(srcBuffer, stringOffset, getStringType());
+
+        offsets.putInt(currentOffset);
+        payload.write(srcBuffer.array(), stringOffset, stringLength);
+        currentOffset += stringLength;
       }
     }
 
     // ARSC files pad to a 4-byte boundary. We should do so too.
-    stringOffset = writePad(payload, stringOffset);
-    return stringOffset;
+    currentOffset = writePad(payload, currentOffset);
+    return currentOffset;
   }
 
   private int writeStyles(DataOutput payload, ByteBuffer offsets, boolean shrink)
@@ -249,10 +264,10 @@ public final class StringPoolChunk extends Chunk {
   @Override
   protected void writeHeader(ByteBuffer output) {
     int stringsStart = getHeaderSize() + getOffsetSize();
-    output.putInt(strings.size());
+    output.putInt(stringOffsets.length);
     output.putInt(styles.size());
     output.putInt(flags);
-    output.putInt(strings.isEmpty() ? 0 : stringsStart);
+    output.putInt(stringOffsets.length == 0 ? 0 : stringsStart);
     output.putInt(0);  // Placeholder. The styles starting offset cannot be computed at this point.
   }
 

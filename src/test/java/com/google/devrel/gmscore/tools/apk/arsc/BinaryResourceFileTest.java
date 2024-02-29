@@ -35,8 +35,8 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-@RunWith(JUnit4.class)
 /** Tests {@link BinaryResourceFile}. */
+@RunWith(JUnit4.class)
 public final class BinaryResourceFileTest {
 
   /** Tests that resource files, when reassembled, are identical. */
@@ -52,7 +52,7 @@ public final class BinaryResourceFileTest {
       byte[] fileBytes = entry.getValue();
       if (!name.startsWith("res/raw/")) {  // xml files in res/raw/ are not compact XML
         BinaryResourceFile file = new BinaryResourceFile(fileBytes);
-        Assert.assertArrayEquals(fileBytes, file.toByteArray());
+        Assert.assertArrayEquals(name, fileBytes, file.toByteArray());
       }
     }
   }
@@ -83,5 +83,4 @@ public final class BinaryResourceFileTest {
     }
     return files;
   }
-
 }
