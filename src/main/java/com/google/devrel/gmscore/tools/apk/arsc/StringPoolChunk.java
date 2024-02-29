@@ -28,7 +28,14 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
 
-/** Represents a string pool structure. */
+/**
+ * Represents a string pool structure.
+ * <p>
+ * This does not read all the strings at initialization. Instead,
+ * only the string offsets are read and if {@link StringPoolChunk#getString(int)}
+ * is called only then is it decoded into a {@link String}. Otherwise, the bytes will
+ * be directly copied back when this chunk is written.
+ */
 public final class StringPoolChunk extends Chunk {
 
   // These are the defined flags for the "flags" field of ResourceStringPoolHeader
@@ -48,8 +55,8 @@ public final class StringPoolChunk extends Chunk {
   private final int stylesStart;
 
   /**
-   * Number of strings in the original buffer. This is not necessarily the number of strings in
-   * {@code strings}.
+   * Number of strings in the original buffer. This is not necessarily the number of strings
+   * returned by {@link StringPoolChunk#getStringCount()}.
    */
   private final int stringCount;
 
@@ -59,13 +66,22 @@ public final class StringPoolChunk extends Chunk {
    */
   private final int styleCount;
 
-//  /**
-//   * The strings ordered as they appear in the arsc file. e.g. strings.get(1234) gets the 1235th
-//   * string in the arsc file.
-//   */
-//  private final List<String> strings = new ArrayList<>();
+  /**
+   * Extra strings added on after {@link StringPoolChunk#stringOffsets}, in a sequential order.
+   */
+  private final List<String> newStrings = new ArrayList<>();
 
+  /**
+   * The strings offsets ordered as they appear in the arsc file, referencing the
+   * data in the {@link StringPoolChunk#srcBuffer}.
+   * e.g. strings.get(1234) gets the 1235th
+   */
   private int[] stringOffsets;
+
+  /**
+   * The original source buffer used to lazy load strings as
+   * defined by {@link StringPoolChunk#stringOffsets}.
+   */
   private ByteBuffer srcBuffer;
 
   /**
@@ -93,6 +109,10 @@ public final class StringPoolChunk extends Chunk {
 
   @Override
   protected void init(ByteBuffer buffer) {
+    if (srcBuffer != null) {
+      throw new IllegalStateException("StringPoolChunk already initialized!");
+    }
+
     super.init(buffer);
 
     srcBuffer = buffer;
@@ -114,6 +134,7 @@ public final class StringPoolChunk extends Chunk {
       if (bytes.length < stringOffsets[i] + encodedString.length) continue;
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        // noinspection Since15
         if (Arrays.equals(
                 bytes, stringOffsets[i], stringOffsets[i] + encodedString.length,
                 encodedString, 0, encodedString.length)) {
@@ -127,6 +148,11 @@ public final class StringPoolChunk extends Chunk {
       }
     }
 
+    int newStringsIdx = newStrings.indexOf(string);
+    if (newStringsIdx >= 0) {
+      return newStringsIdx + stringOffsets.length;
+    }
+
     return -1;
   }
 
@@ -137,12 +163,46 @@ public final class StringPoolChunk extends Chunk {
    * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
    */
   public String getString(int index) {
-    return BinaryResourceString.decodeString(srcBuffer, stringOffsets[index], getStringType());
+    if (index < stringOffsets.length) {
+      return BinaryResourceString.decodeString(srcBuffer, stringOffsets[index], getStringType());
+    } else {
+      return newStrings.get(index - stringOffsets.length);
+    }
+  }
+
+  /**
+   * Adds a string to the unwritten strings list for later.
+   *
+   * @param string The new string to add to the end of the pool. Note that when this pool is
+   *               written, this string will not be deduped if it already exists in the pool.
+   * @return The index of the string in the pool.
+   */
+  public int addString(String string) {
+    return addString(string, false);
+  }
+
+  /**
+   * Adds a string to the unwritten strings list for later.
+   *
+   * @param string The new string to add to the end of the pool.
+   * @param deduplicate If true, then an equal existing string will be searched for in the pool.
+   *                    if found, then the existing string index will be returned and no action
+   *                    will occur.
+   * @return The index of the string in the pool.
+   */
+  public int addString(String string, boolean deduplicate) {
+    int existingIndex;
+    if (deduplicate && (existingIndex = indexOf(string)) >= 0) {
+      return existingIndex;
+    } else {
+      newStrings.add(string);
+      return stringOffsets.length + newStrings.size() - 1;
+    }
   }
 
   /** Returns the number of strings in this pool. */
   public int getStringCount() {
-    return stringCount;
+    return stringOffsets.length + newStrings.size();
   }
 
   /**
@@ -172,7 +232,7 @@ public final class StringPoolChunk extends Chunk {
 
   /** Returns the number of bytes needed for offsets based on {@code strings} and {@code styles}. */
   private int getOffsetSize() {
-    return (stringOffsets.length + styles.size()) * 4;
+    return (getStringCount() + styles.size()) * 4;
   }
 
   /**
@@ -213,7 +273,7 @@ public final class StringPoolChunk extends Chunk {
   }
 
   private List<StringPoolStyle> readStyles(ByteBuffer buffer, int offset, int count) {
-    List<StringPoolStyle> result = new ArrayList<>();
+    List<StringPoolStyle> result = new ArrayList<>(count);
     // After the array of offsets for the strings in the pool, we have an offset for the styles
     // in this pool.
     for (int i = 0; i < count; ++i) {
@@ -235,7 +295,7 @@ public final class StringPoolChunk extends Chunk {
       if ((shrink || isOriginalDeduped) && (existingOffset = used.get(stringOffset)) != null) {
         offsets.putInt(existingOffset);
       } else {
-        if ((shrink || isOriginalDeduped)) {
+        if (shrink || isOriginalDeduped) {
           used.put(stringOffset, currentOffset);
         }
 
@@ -245,6 +305,15 @@ public final class StringPoolChunk extends Chunk {
         payload.write(srcBuffer.array(), stringOffset, stringLength);
         currentOffset += stringLength;
       }
+    }
+
+    // New strings aren't deduped since it's unlikely someone would manually add duplicated strings
+    for (String string : newStrings) {
+      byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
+
+      offsets.putInt(currentOffset);
+      payload.write(encodedString);
+      currentOffset += encodedString.length;
     }
 
     // ARSC files pad to a 4-byte boundary. We should do so too.
@@ -284,10 +353,10 @@ public final class StringPoolChunk extends Chunk {
   @Override
   protected void writeHeader(ByteBuffer output) {
     int stringsStart = getHeaderSize() + getOffsetSize();
-    output.putInt(stringOffsets.length);
+    output.putInt(getStringCount());
     output.putInt(styles.size());
     output.putInt(flags);
-    output.putInt(stringOffsets.length == 0 ? 0 : stringsStart);
+    output.putInt(getStringCount() == 0 ? 0 : stringsStart);
     output.putInt(0);  // Placeholder. The styles starting offset cannot be computed at this point.
   }
 

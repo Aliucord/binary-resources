@@ -38,12 +38,11 @@ import java.util.zip.ZipFile;
 /** Tests {@link BinaryResourceFile}. */
 @RunWith(JUnit4.class)
 public final class BinaryResourceFileTest {
+  private File apk = new File(getClass().getClassLoader().getResource("test.apk").getPath());
 
   /** Tests that resource files, when reassembled, are identical. */
   @Test
   public void testToByteArray() throws Exception {
-    File apk = new File(getClass().getClassLoader().getResource("test.apk").getPath());
-
     // Get all .arsc and encoded .xml files
     String regex = "(.*?\\.arsc)|(AndroidManifest\\.xml)|(res/.*?\\.xml)";
     Map<String, byte[]> resourceFiles = getFiles(apk, Pattern.compile(regex));
@@ -55,6 +54,28 @@ public final class BinaryResourceFileTest {
         Assert.assertArrayEquals(name, fileBytes, file.toByteArray());
       }
     }
+  }
+
+  /** Test that newly added strings to a StringPoolChunk are saved correctly. */
+  @Test
+  public void testAddNewString() throws Exception {
+    String newString = "abcdef";
+
+    byte[] arscBytes = getFiles(apk, Pattern.compile("resources.arsc")).get("resources.arsc");
+    BinaryResourceFile arsc = new BinaryResourceFile(arscBytes);
+
+    int newStringIdx = ((ResourceTableChunk)arsc.getChunks().get(0))
+            .getStringPool()
+            .addString(newString);
+
+    byte[] arsc2Bytes = arsc.toByteArray();
+    BinaryResourceFile arsc2 = new BinaryResourceFile(arsc2Bytes);
+
+    String arsc2String = ((ResourceTableChunk)arsc.getChunks().get(0))
+            .getStringPool()
+            .getString(newStringIdx);
+
+    Assert.assertEquals(newString, arsc2String);
   }
 
   /**
