@@ -16,63 +16,63 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
-import java.util.Arrays;
-
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.util.Arrays;
+
 @RunWith(Parameterized.class)
 public class BinaryResourceIdentifierTest {
 
-  @Parameters
-  public static Iterable<Object[]> data() {
-    return Arrays.asList(new Object[][] {
-      {0x01234567, 0x01, 0x23, 0x4567},
-      {0xFEDCBA98, 0xFE, 0xDC, 0xBA98}
-    });
-  }
+    private final BinaryResourceIdentifier resourceIdentifier;
+    private final BinaryResourceIdentifier resourceIdPkgTypeEntry;
+    private final int packageId;
+    private final int typeId;
+    private final int entryId;
+    private final int resourceId;
 
-  private final BinaryResourceIdentifier resourceIdentifier;
-  private final BinaryResourceIdentifier resourceIdPkgTypeEntry;
-  private final int packageId;
-  private final int typeId;
-  private final int entryId;
-  private final int resourceId;
+    public BinaryResourceIdentifierTest(int resourceId, int packageId, int typeId, int entryId) {
+        resourceIdentifier = BinaryResourceIdentifier.create(resourceId);
+        resourceIdPkgTypeEntry = BinaryResourceIdentifier.create(packageId, typeId, entryId);
+        this.packageId = packageId;
+        this.typeId = typeId;
+        this.entryId = entryId;
+        this.resourceId = resourceId;
+    }
 
-  public BinaryResourceIdentifierTest(int resourceId, int packageId, int typeId, int entryId) {
-    resourceIdentifier = BinaryResourceIdentifier.create(resourceId);
-    resourceIdPkgTypeEntry = BinaryResourceIdentifier.create(packageId, typeId, entryId);
-    this.packageId = packageId;
-    this.typeId = typeId;
-    this.entryId = entryId;
-    this.resourceId = resourceId;
-  }
+    @Parameters
+    public static Iterable<Object[]> data() {
+        return Arrays.asList(new Object[][]{
+                {0x01234567, 0x01, 0x23, 0x4567},
+                {0xFEDCBA98, 0xFE, 0xDC, 0xBA98}
+        });
+    }
 
-  @Test
-  public void resourceIdentifier_comparePackage() {
-    Assert.assertEquals(packageId, resourceIdentifier.packageId());
-    Assert.assertEquals(resourceIdPkgTypeEntry.packageId(), resourceIdentifier.packageId());
-  }
+    @Test
+    public void resourceIdentifier_comparePackage() {
+        Assert.assertEquals(packageId, resourceIdentifier.packageId());
+        Assert.assertEquals(resourceIdPkgTypeEntry.packageId(), resourceIdentifier.packageId());
+    }
 
-  @Test
-  public void resourceIdentifier_compareType() {
-    Assert.assertEquals(typeId, resourceIdentifier.typeId());
-    Assert.assertEquals(resourceIdPkgTypeEntry.typeId(), resourceIdentifier.typeId());
-  }
+    @Test
+    public void resourceIdentifier_compareType() {
+        Assert.assertEquals(typeId, resourceIdentifier.typeId());
+        Assert.assertEquals(resourceIdPkgTypeEntry.typeId(), resourceIdentifier.typeId());
+    }
 
-  @Test
-  public void resourceIdentifier_compareEntry() {
-    Assert.assertEquals(entryId, resourceIdentifier.entryId());
-    Assert.assertEquals(resourceIdPkgTypeEntry.entryId(), resourceIdentifier.entryId());
-  }
+    @Test
+    public void resourceIdentifier_compareEntry() {
+        Assert.assertEquals(entryId, resourceIdentifier.entryId());
+        Assert.assertEquals(resourceIdPkgTypeEntry.entryId(), resourceIdentifier.entryId());
+    }
 
-  @Test
-  public void resourceIdentifier_compareId() {
-    Assert.assertEquals(resourceId, resourceIdentifier.resourceId());
-    Assert.assertEquals(resourceIdentifier.resourceId(), resourceIdentifier.resourceId());
-  }
+    @Test
+    public void resourceIdentifier_compareId() {
+        Assert.assertEquals(resourceId, resourceIdentifier.resourceId());
+        Assert.assertEquals(resourceIdentifier.resourceId(), resourceIdentifier.resourceId());
+    }
 }
 

@@ -17,25 +17,25 @@ package com.google.devrel.gmscore.tools.apk.arsc;
 
 import static org.junit.Assert.assertEquals;
 
-import java.nio.ByteBuffer;
-
 import org.junit.Test;
 
+import java.nio.ByteBuffer;
+
 public class BinaryResourceConfigurationTest {
-  @Test
-  public void testConfigurationString() {
-    {
-      byte[] buff = new byte[] {
-          0, 0, 0, 28, 0, 0, 0, 0, 'f', 'r', 'C', 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-      };
-      assertEquals("fr-rCA", BinaryResourceConfiguration.create(ByteBuffer.wrap(buff)).toString());
+    @Test
+    public void testConfigurationString() {
+        {
+            byte[] buff = new byte[]{
+                    0, 0, 0, 28, 0, 0, 0, 0, 'f', 'r', 'C', 'A', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            };
+            assertEquals("fr-rCA", BinaryResourceConfiguration.create(ByteBuffer.wrap(buff)).toString());
+        }
+        {
+            byte[] buff = new byte[]{
+                    0, 0, 0, 48, 0, 0, 0, 0, 's', 'r', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 'L', 'a', 't', 'n', 0, 0, 0, 0, 0, 0, 0, 0
+            };
+            assertEquals("b+sr+Latn", BinaryResourceConfiguration.create(ByteBuffer.wrap(buff)).toString());
+        }
     }
-    {
-      byte[] buff = new byte[] {
-          0, 0, 0, 48, 0, 0, 0, 0, 's', 'r', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0, 0, 0, 0, 'L', 'a', 't', 'n', 0, 0, 0, 0, 0, 0, 0, 0
-      };
-      assertEquals("b+sr+Latn", BinaryResourceConfiguration.create(ByteBuffer.wrap(buff)).toString());
-    }
-  }
 }

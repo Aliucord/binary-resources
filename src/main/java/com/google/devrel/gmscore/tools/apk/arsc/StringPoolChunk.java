@@ -17,10 +17,13 @@
 package com.google.devrel.gmscore.tools.apk.arsc;
 
 import android.os.Build;
-import org.jetbrains.annotations.Nullable;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.LittleEndianDataOutputStream;
+
+import org.jetbrains.annotations.Nullable;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -38,485 +41,500 @@ import java.util.*;
  */
 public final class StringPoolChunk extends Chunk {
 
-  // These are the defined flags for the "flags" field of ResourceStringPoolHeader
-  private static final int SORTED_FLAG = 1 << 0;
-  private static final int UTF8_FLAG   = 1 << 8;
+    // These are the defined flags for the "flags" field of ResourceStringPoolHeader
+    private static final int SORTED_FLAG = 1 << 0;
+    private static final int UTF8_FLAG = 1 << 8;
 
-  /** The offset from the start of the header that the stylesStart field is at. */
-  private static final int STYLE_START_OFFSET = 24;
+    /**
+     * The offset from the start of the header that the stylesStart field is at.
+     */
+    private static final int STYLE_START_OFFSET = 24;
 
-  /** Flags. */
-  private final int flags;
+    /**
+     * Flags.
+     */
+    private final int flags;
 
-  /** Index from header of the string data. */
-  private final int stringsStart;
+    /**
+     * Index from header of the string data.
+     */
+    private final int stringsStart;
 
-  /** Index from header of the style data. */
-  private final int stylesStart;
+    /**
+     * Index from header of the style data.
+     */
+    private final int stylesStart;
 
-  /**
-   * Number of strings in the original buffer. This is not necessarily the number of strings
-   * returned by {@link StringPoolChunk#getStringCount()}.
-   */
-  private final int stringCount;
+    /**
+     * Number of strings in the original buffer. This is not necessarily the number of strings
+     * returned by {@link StringPoolChunk#getStringCount()}.
+     */
+    private final int stringCount;
 
-  /**
-   * Number of styles in the original buffer. This is not necessarily the number of styles in
-   * {@code styles}.
-   */
-  private final int styleCount;
+    /**
+     * Number of styles in the original buffer. This is not necessarily the number of styles in
+     * {@code styles}.
+     */
+    private final int styleCount;
 
-  /**
-   * Extra strings added on after {@link StringPoolChunk#stringOffsets}, in a sequential order.
-   */
-  private final List<String> newStrings = new ArrayList<>();
+    /**
+     * Extra strings added on after {@link StringPoolChunk#stringOffsets}, in a sequential order.
+     */
+    private final List<String> newStrings = new ArrayList<>();
+    /**
+     * These styles have a 1:1 relationship with the strings. For example, styles.get(3) refers to
+     * the string at location strings.get(3). There are never more styles than strings (though there
+     * may be less). Inside of that are all of the styles referenced by that string.
+     */
+    private final List<StringPoolStyle> styles = new ArrayList<>();
+    /**
+     * The strings offsets ordered as they appear in the arsc file, referencing the
+     * data in the {@link StringPoolChunk#srcBuffer}.
+     * e.g. strings.get(1234) gets the 1235th
+     */
+    private int[] stringOffsets;
+    /**
+     * The original source buffer used to lazy load strings as
+     * defined by {@link StringPoolChunk#stringOffsets}.
+     */
+    private ByteBuffer srcBuffer;
+    /**
+     * True if the original {@link StringPoolChunk} shows signs of being deduped. Specifically, this
+     * is set to true if there exists a string whose offset is <= the previous offset. This is used to
+     * preserve the deduping of strings for pools that have been deduped.
+     */
+    private boolean isOriginalDeduped = false;
 
-  /**
-   * The strings offsets ordered as they appear in the arsc file, referencing the
-   * data in the {@link StringPoolChunk#srcBuffer}.
-   * e.g. strings.get(1234) gets the 1235th
-   */
-  private int[] stringOffsets;
-
-  /**
-   * The original source buffer used to lazy load strings as
-   * defined by {@link StringPoolChunk#stringOffsets}.
-   */
-  private ByteBuffer srcBuffer;
-
-  /**
-   * These styles have a 1:1 relationship with the strings. For example, styles.get(3) refers to
-   * the string at location strings.get(3). There are never more styles than strings (though there
-   * may be less). Inside of that are all of the styles referenced by that string.
-   */
-  private final List<StringPoolStyle> styles = new ArrayList<>();
-
-  /**
-   * True if the original {@link StringPoolChunk} shows signs of being deduped. Specifically, this
-   * is set to true if there exists a string whose offset is <= the previous offset. This is used to
-   * preserve the deduping of strings for pools that have been deduped.
-   */
-  private boolean isOriginalDeduped = false;
-
-  protected StringPoolChunk(ByteBuffer buffer, @Nullable Chunk parent) {
-    super(buffer, parent);
-    stringCount = buffer.getInt();
-    styleCount = buffer.getInt();
-    flags        = buffer.getInt();
-    stringsStart = buffer.getInt();
-    stylesStart  = buffer.getInt();
-  }
-
-  @Override
-  protected void init(ByteBuffer buffer) {
-    if (srcBuffer != null) {
-      throw new IllegalStateException("StringPoolChunk already initialized!");
+    StringPoolChunk(ByteBuffer buffer, @Nullable Chunk parent) {
+        super(buffer, parent);
+        stringCount = buffer.getInt();
+        styleCount = buffer.getInt();
+        flags = buffer.getInt();
+        stringsStart = buffer.getInt();
+        stylesStart = buffer.getInt();
     }
 
-    super.init(buffer);
-
-    srcBuffer = buffer;
-    stringOffsets = readStringOffsets(buffer, offset + stringsStart, stringCount);
-    styles.addAll(readStyles(buffer, offset + stylesStart, styleCount));
-  }
-
-  /**
-   * Returns the 0-based index of the first occurrence of the given string, or -1 if the string is
-   * not in the pool. This runs in O(n) time.
-   * @param string The string to check the pool for.
-   * @return Index of the string, or -1 if not found.
-   */
-  public int indexOf(String string) {
-    byte[] bytes = srcBuffer.array();
-    byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
-
-    for (int i = 0; i < stringOffsets.length; i++) {
-      if (bytes.length < stringOffsets[i] + encodedString.length) continue;
-
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        // noinspection Since15
-        if (Arrays.equals(
-                bytes, stringOffsets[i], stringOffsets[i] + encodedString.length,
-                encodedString, 0, encodedString.length)) {
-          return i;
-        }
-      } else {
-        if (ByteBuffer.wrap(bytes, stringOffsets[i], encodedString.length)
-                .equals(ByteBuffer.wrap(encodedString))) {
-          return i;
-        }
-      }
-    }
-
-    int newStringsIdx = newStrings.indexOf(string);
-    if (newStringsIdx >= 0) {
-      return newStringsIdx + stringOffsets.length;
-    }
-
-    return -1;
-  }
-
-  /**
-   * Returns a string at the given (0-based) index.
-   *
-   * @param index The (0-based) index of the string to return.
-   * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
-   */
-  public String getString(int index) {
-    if (index < stringOffsets.length) {
-      return BinaryResourceString.decodeString(srcBuffer, stringOffsets[index], getStringType());
-    } else {
-      return newStrings.get(index - stringOffsets.length);
-    }
-  }
-
-  /**
-   * Adds a string to the unwritten strings list for later.
-   *
-   * @param string The new string to add to the end of the pool. Note that when this pool is
-   *               written, this string will not be deduped if it already exists in the pool.
-   * @return The index of the string in the pool.
-   */
-  public int addString(String string) {
-    return addString(string, false);
-  }
-
-  /**
-   * Adds a string to the unwritten strings list for later.
-   *
-   * @param string The new string to add to the end of the pool.
-   * @param deduplicate If true, then an equal existing string will be searched for in the pool.
-   *                    if found, then the existing string index will be returned and no action
-   *                    will occur.
-   * @return The index of the string in the pool.
-   */
-  public int addString(String string, boolean deduplicate) {
-    int existingIndex;
-    if (deduplicate && (existingIndex = indexOf(string)) >= 0) {
-      return existingIndex;
-    } else {
-      newStrings.add(string);
-      return stringOffsets.length + newStrings.size() - 1;
-    }
-  }
-
-  /** Returns the number of strings in this pool. */
-  public int getStringCount() {
-    return stringOffsets.length + newStrings.size();
-  }
-
-  /**
-   * Returns a style at the given (0-based) index.
-   *
-   * @param index The (0-based) index of the style to return.
-   * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
-   */
-  public StringPoolStyle getStyle(int index) {
-    return styles.get(index);
-  }
-
-  /** Returns the number of styles in this pool. */
-  public int getStyleCount() {
-    return styles.size();
-  }
-
-  /** Returns the type of strings in this pool. */
-  public BinaryResourceString.Type getStringType() {
-    return isUTF8() ? BinaryResourceString.Type.UTF8 : BinaryResourceString.Type.UTF16;
-  }
-
-  @Override
-  protected Type getType() {
-    return Chunk.Type.STRING_POOL;
-  }
-
-  /** Returns the number of bytes needed for offsets based on {@code strings} and {@code styles}. */
-  private int getOffsetSize() {
-    return (getStringCount() + styles.size()) * 4;
-  }
-
-  /**
-   * True if this string pool contains strings in UTF-8 format. Otherwise, strings are in UTF-16.
-   *
-   * @return true if @{code strings} are in UTF-8; false if they're in UTF-16.
-   */
-  public boolean isUTF8() {
-    return (flags & UTF8_FLAG) != 0;
-  }
-
-  /**
-   * True if this string pool contains already-sorted strings.
-   *
-   * @return true if @{code strings} are sorted.
-   */
-  public boolean isSorted() {
-    return (flags & SORTED_FLAG) != 0;
-  }
-
-  private int[] readStringOffsets(ByteBuffer buffer, int offset, int count) {
-    int[] results = new int[count];
-    int previousOffset = -1;
-
-    // After the header, we now have an array of offsets for the strings in this pool.
-    for (int i = 0; i < count; ++i) {
-      int stringOffset = offset + buffer.getInt();
-
-      if (stringOffset <= previousOffset) {
-        isOriginalDeduped = true;
-      }
-      previousOffset = stringOffset;
-
-      results[i] = stringOffset;
-    }
-
-    return results;
-  }
-
-  private List<StringPoolStyle> readStyles(ByteBuffer buffer, int offset, int count) {
-    List<StringPoolStyle> result = new ArrayList<>(count);
-    // After the array of offsets for the strings in the pool, we have an offset for the styles
-    // in this pool.
-    for (int i = 0; i < count; ++i) {
-      int styleOffset = offset + buffer.getInt();
-      result.add(StringPoolStyle.create(buffer, styleOffset, this));
-    }
-    return result;
-  }
-
-  private int writeStrings(DataOutput payload, ByteBuffer offsets, boolean shrink)
-      throws IOException {
-    int currentOffset = 0;
-
-    // existing string offset -> new string offset
-    Map<Integer, Integer> used = new HashMap<>(getStringCount());
-
-    for (int stringOffset : stringOffsets) {
-      Integer existingOffset;
-      if ((shrink || isOriginalDeduped) && (existingOffset = used.get(stringOffset)) != null) {
-        offsets.putInt(existingOffset);
-      } else {
-        if (shrink || isOriginalDeduped) {
-          used.put(stringOffset, currentOffset);
+    @Override
+    protected void init(ByteBuffer buffer) {
+        if (srcBuffer != null) {
+            throw new IllegalStateException("StringPoolChunk already initialized!");
         }
 
-        int stringLength = BinaryResourceString.decodeFullLength(srcBuffer, stringOffset, getStringType());
+        super.init(buffer);
 
-        offsets.putInt(currentOffset);
-        payload.write(srcBuffer.array(), stringOffset, stringLength);
-        currentOffset += stringLength;
-      }
+        srcBuffer = buffer;
+        stringOffsets = readStringOffsets(buffer, offset + stringsStart, stringCount);
+        styles.addAll(readStyles(buffer, offset + stylesStart, styleCount));
     }
 
-    // New strings aren't deduped since it's unlikely someone would manually add duplicated strings
-    for (String string : newStrings) {
-      byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
+    /**
+     * Returns the 0-based index of the first occurrence of the given string, or -1 if the string is
+     * not in the pool. This runs in O(n) time.
+     *
+     * @param string The string to check the pool for.
+     * @return Index of the string, or -1 if not found.
+     */
+    public int indexOf(String string) {
+        byte[] bytes = srcBuffer.array();
+        byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
 
-      offsets.putInt(currentOffset);
-      payload.write(encodedString);
-      currentOffset += encodedString.length;
+        for (int i = 0; i < stringOffsets.length; i++) {
+            if (bytes.length < stringOffsets[i] + encodedString.length) continue;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // noinspection Since15
+                if (Arrays.equals(
+                        bytes, stringOffsets[i], stringOffsets[i] + encodedString.length,
+                        encodedString, 0, encodedString.length)) {
+                    return i;
+                }
+            } else {
+                if (ByteBuffer.wrap(bytes, stringOffsets[i], encodedString.length)
+                        .equals(ByteBuffer.wrap(encodedString))) {
+                    return i;
+                }
+            }
+        }
+
+        int newStringsIdx = newStrings.indexOf(string);
+        if (newStringsIdx >= 0) {
+            return newStringsIdx + stringOffsets.length;
+        }
+
+        return -1;
     }
 
-    // ARSC files pad to a 4-byte boundary. We should do so too.
-    currentOffset = writePad(payload, currentOffset);
-    return currentOffset;
-  }
+    /**
+     * Returns a string at the given (0-based) index.
+     *
+     * @param index The (0-based) index of the string to return.
+     * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
+     */
+    public String getString(int index) {
+        if (index < stringOffsets.length) {
+            return BinaryResourceString.decodeString(srcBuffer, stringOffsets[index], getStringType());
+        } else {
+            return newStrings.get(index - stringOffsets.length);
+        }
+    }
 
-  private int writeStyles(DataOutput payload, ByteBuffer offsets, boolean shrink)
-      throws IOException {
-    int styleOffset = 0;
+    /**
+     * Adds a string to the unwritten strings list for later.
+     *
+     * @param string The new string to add to the end of the pool. Note that when this pool is
+     * written, this string will not be deduped if it already exists in the pool.
+     * @return The index of the string in the pool.
+     */
+    public int addString(String string) {
+        return addString(string, false);
+    }
+
+    /**
+     * Adds a string to the unwritten strings list for later.
+     *
+     * @param string The new string to add to the end of the pool.
+     * @param deduplicate If true, then an equal existing string will be searched for in the pool.
+     * if found, then the existing string index will be returned and no action
+     * will occur.
+     * @return The index of the string in the pool.
+     */
+    public int addString(String string, boolean deduplicate) {
+        int existingIndex;
+        if (deduplicate && (existingIndex = indexOf(string)) >= 0) {
+            return existingIndex;
+        } else {
+            newStrings.add(string);
+            return stringOffsets.length + newStrings.size() - 1;
+        }
+    }
+
+    /**
+     * Returns the number of strings in this pool.
+     */
+    public int getStringCount() {
+        return stringOffsets.length + newStrings.size();
+    }
+
+    /**
+     * Returns a style at the given (0-based) index.
+     *
+     * @param index The (0-based) index of the style to return.
+     * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
+     */
+    public StringPoolStyle getStyle(int index) {
+        return styles.get(index);
+    }
+
+    /**
+     * Returns the number of styles in this pool.
+     */
+    public int getStyleCount() {
+        return styles.size();
+    }
+
+    /**
+     * Returns the type of strings in this pool.
+     */
+    public BinaryResourceString.Type getStringType() {
+        return isUTF8() ? BinaryResourceString.Type.UTF8 : BinaryResourceString.Type.UTF16;
+    }
+
+    @Override
+    protected Type getType() {
+        return Chunk.Type.STRING_POOL;
+    }
+
+    /**
+     * Returns the number of bytes needed for offsets based on {@code strings} and {@code styles}.
+     */
+    private int getOffsetSize() {
+        return (getStringCount() + styles.size()) * 4;
+    }
+
+    /**
+     * True if this string pool contains strings in UTF-8 format. Otherwise, strings are in UTF-16.
+     *
+     * @return true if @{code strings} are in UTF-8; false if they're in UTF-16.
+     */
+    public boolean isUTF8() {
+        return (flags & UTF8_FLAG) != 0;
+    }
+
+    /**
+     * True if this string pool contains already-sorted strings.
+     *
+     * @return true if @{code strings} are sorted.
+     */
+    public boolean isSorted() {
+        return (flags & SORTED_FLAG) != 0;
+    }
+
+    private int[] readStringOffsets(ByteBuffer buffer, int offset, int count) {
+        int[] results = new int[count];
+        int previousOffset = -1;
+
+        // After the header, we now have an array of offsets for the strings in this pool.
+        for (int i = 0; i < count; ++i) {
+            int stringOffset = offset + buffer.getInt();
+
+            if (stringOffset <= previousOffset) {
+                isOriginalDeduped = true;
+            }
+            previousOffset = stringOffset;
+
+            results[i] = stringOffset;
+        }
+
+        return results;
+    }
+
+    private List<StringPoolStyle> readStyles(ByteBuffer buffer, int offset, int count) {
+        List<StringPoolStyle> result = new ArrayList<>(count);
+        // After the array of offsets for the strings in the pool, we have an offset for the styles
+        // in this pool.
+        for (int i = 0; i < count; ++i) {
+            int styleOffset = offset + buffer.getInt();
+            result.add(StringPoolStyle.create(buffer, styleOffset, this));
+        }
+        return result;
+    }
+
+    private int writeStrings(DataOutput payload, ByteBuffer offsets, boolean shrink)
+            throws IOException {
+        int currentOffset = 0;
+
+        // existing string offset -> new string offset
+        Map<Integer, Integer> used = new HashMap<>(getStringCount());
+
+        for (int stringOffset : stringOffsets) {
+            Integer existingOffset;
+            if ((shrink || isOriginalDeduped) && (existingOffset = used.get(stringOffset)) != null) {
+                offsets.putInt(existingOffset);
+            } else {
+                if (shrink || isOriginalDeduped) {
+                    used.put(stringOffset, currentOffset);
+                }
+
+                int stringLength = BinaryResourceString.decodeFullLength(srcBuffer, stringOffset, getStringType());
+
+                offsets.putInt(currentOffset);
+                payload.write(srcBuffer.array(), stringOffset, stringLength);
+                currentOffset += stringLength;
+            }
+        }
+
+        // New strings aren't deduped since it's unlikely someone would manually add duplicated strings
+        for (String string : newStrings) {
+            byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
+
+            offsets.putInt(currentOffset);
+            payload.write(encodedString);
+            currentOffset += encodedString.length;
+        }
+
+        // ARSC files pad to a 4-byte boundary. We should do so too.
+        currentOffset = writePad(payload, currentOffset);
+        return currentOffset;
+    }
+
+    private int writeStyles(DataOutput payload, ByteBuffer offsets, boolean shrink)
+            throws IOException {
+        int styleOffset = 0;
         if (!styles.isEmpty()) {
-      Map<StringPoolStyle, Integer> used = new HashMap<>();  // Keeps track of bytes already written
-      for (StringPoolStyle style : styles) {
-        if (!used.containsKey(style) || !shrink) {
-          byte[] encodedStyle = style.toByteArray(shrink);
-          payload.write(encodedStyle);
-          used.put(style, styleOffset);
-          offsets.putInt(styleOffset);
-          styleOffset += encodedStyle.length;
-        } else {  // contains key and shrink is true
-          Integer offset = used.get(style);
-          offsets.putInt(offset == null ? 0 : offset);
+            Map<StringPoolStyle, Integer> used = new HashMap<>();  // Keeps track of bytes already written
+            for (StringPoolStyle style : styles) {
+                if (!used.containsKey(style) || !shrink) {
+                    byte[] encodedStyle = style.toByteArray(shrink);
+                    payload.write(encodedStyle);
+                    used.put(style, styleOffset);
+                    offsets.putInt(styleOffset);
+                    styleOffset += encodedStyle.length;
+                } else {  // contains key and shrink is true
+                    Integer offset = used.get(style);
+                    offsets.putInt(offset == null ? 0 : offset);
+                }
+            }
+            // The end of the spans are terminated with another sentinel value
+            payload.writeInt(StringPoolStyle.RES_STRING_POOL_SPAN_END);
+            styleOffset += 4;
+            // TODO(acornwall): There appears to be an extra SPAN_END here... why?
+            payload.writeInt(StringPoolStyle.RES_STRING_POOL_SPAN_END);
+            styleOffset += 4;
+
+            styleOffset = writePad(payload, styleOffset);
         }
-      }
-      // The end of the spans are terminated with another sentinel value
-      payload.writeInt(StringPoolStyle.RES_STRING_POOL_SPAN_END);
-      styleOffset += 4;
-      // TODO(acornwall): There appears to be an extra SPAN_END here... why?
-      payload.writeInt(StringPoolStyle.RES_STRING_POOL_SPAN_END);
-      styleOffset += 4;
-
-      styleOffset = writePad(payload, styleOffset);
-    }
-    return styleOffset;
-  }
-
-  @Override
-  protected void writeHeader(ByteBuffer output) {
-    int stringsStart = getHeaderSize() + getOffsetSize();
-    output.putInt(getStringCount());
-    output.putInt(styles.size());
-    output.putInt(flags);
-    output.putInt(getStringCount() == 0 ? 0 : stringsStart);
-    output.putInt(0);  // Placeholder. The styles starting offset cannot be computed at this point.
-  }
-
-  @Override
-  protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-      throws IOException {
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    int stringOffset = 0;
-    ByteBuffer offsets = ByteBuffer.allocate(getOffsetSize());
-    offsets.order(ByteOrder.LITTLE_ENDIAN);
-
-    // Write to a temporary payload so we can rearrange this and put the offsets first
-    try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
-      stringOffset = writeStrings(payload, offsets, shrink);
-      writeStyles(payload, offsets, shrink);
-    }
-
-    output.write(offsets.array());
-    output.write(baos.toByteArray());
-    if (!styles.isEmpty()) {
-      header.putInt(STYLE_START_OFFSET, getHeaderSize() + getOffsetSize() + stringOffset);
-    }
-  }
-
-  /**
-   * Represents all of the styles for a particular string. The string is determined by its index
-   * in {@link StringPoolChunk}.
-   */
-  public static class StringPoolStyle implements SerializableResource {
-
-    // Styles are a list of integers with 0xFFFFFFFF serving as a sentinel value.
-    static final int RES_STRING_POOL_SPAN_END = 0xFFFFFFFF;
-    private final List<StringPoolSpan> spans;
-
-    static StringPoolStyle create(ByteBuffer buffer, int offset, StringPoolChunk parent) {
-      Builder<StringPoolSpan> spans = ImmutableList.builder();
-      int nameIndex = buffer.getInt(offset);
-      while (nameIndex != RES_STRING_POOL_SPAN_END) {
-        spans.add(StringPoolSpan.create(buffer, offset, parent));
-        offset += StringPoolSpan.SPAN_LENGTH;
-        nameIndex = buffer.getInt(offset);
-      }
-      return new StringPoolStyle(spans.build());
-    }
-
-    private StringPoolStyle(List<StringPoolSpan> spans) {
-      this.spans = spans;
+        return styleOffset;
     }
 
     @Override
-    public byte[] toByteArray() throws IOException {
-      return toByteArray(false);
+    protected void writeHeader(ByteBuffer output) {
+        int stringsStart = getHeaderSize() + getOffsetSize();
+        output.putInt(getStringCount());
+        output.putInt(styles.size());
+        output.putInt(flags);
+        output.putInt(getStringCount() == 0 ? 0 : stringsStart);
+        output.putInt(0);  // Placeholder. The styles starting offset cannot be computed at this point.
     }
 
     @Override
-    public byte[] toByteArray(boolean shrink) throws IOException {
-      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
+            throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        int stringOffset = 0;
+        ByteBuffer offsets = ByteBuffer.allocate(getOffsetSize());
+        offsets.order(ByteOrder.LITTLE_ENDIAN);
 
-      try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
-        for (StringPoolSpan span : spans) {
-          byte[] encodedSpan = span.toByteArray(shrink);
-          if (encodedSpan.length != StringPoolSpan.SPAN_LENGTH) {
-            throw new IllegalStateException("Encountered a span of invalid length.");
-          }
-          payload.write(encodedSpan);
+        // Write to a temporary payload so we can rearrange this and put the offsets first
+        try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
+            stringOffset = writeStrings(payload, offsets, shrink);
+            writeStyles(payload, offsets, shrink);
         }
-        payload.writeInt(RES_STRING_POOL_SPAN_END);
-      }
 
-      return baos.toByteArray();
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      StringPoolStyle that = (StringPoolStyle)o;
-      return Objects.equals(spans, that.spans);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(spans);
+        output.write(offsets.array());
+        output.write(baos.toByteArray());
+        if (!styles.isEmpty()) {
+            header.putInt(STYLE_START_OFFSET, getHeaderSize() + getOffsetSize() + stringOffset);
+        }
     }
 
     /**
-     * Returns a brief description of the contents of this style. The representation of this
-     * information is subject to change, but below is a typical example:
-     *
-     * <pre>"StringPoolStyle{spans=[StringPoolSpan{foo, start=0, stop=5}, ...]}"</pre>
+     * Represents all of the styles for a particular string. The string is determined by its index
+     * in {@link StringPoolChunk}.
      */
-    @Override
-    public String toString() {
-      return String.format("StringPoolStyle{spans=%s}", spans);
-    }
-  }
+    public static class StringPoolStyle implements SerializableResource {
 
-  /** Represents a styled span associated with a specific string. */
-  private static class StringPoolSpan implements SerializableResource {
-    static final int SPAN_LENGTH = 12;
+        // Styles are a list of integers with 0xFFFFFFFF serving as a sentinel value.
+        static final int RES_STRING_POOL_SPAN_END = 0xFFFFFFFF;
+        private final List<StringPoolSpan> spans;
 
-    private final int nameIndex;
-    private final int start;
-    private final int stop;
-    private final StringPoolChunk parent;
+        private StringPoolStyle(List<StringPoolSpan> spans) {
+            this.spans = spans;
+        }
 
-    static StringPoolSpan create(ByteBuffer buffer, int offset, StringPoolChunk parent) {
-      int nameIndex = buffer.getInt(offset);
-      int start = buffer.getInt(offset + 4);
-      int stop = buffer.getInt(offset + 8);
-      return new StringPoolSpan(nameIndex, start, stop, parent);
-    }
+        static StringPoolStyle create(ByteBuffer buffer, int offset, StringPoolChunk parent) {
+            Builder<StringPoolSpan> spans = ImmutableList.builder();
+            int nameIndex = buffer.getInt(offset);
+            while (nameIndex != RES_STRING_POOL_SPAN_END) {
+                spans.add(StringPoolSpan.create(buffer, offset, parent));
+                offset += StringPoolSpan.SPAN_LENGTH;
+                nameIndex = buffer.getInt(offset);
+            }
+            return new StringPoolStyle(spans.build());
+        }
 
-    private StringPoolSpan(int nameIndex, int start, int stop, StringPoolChunk parent) {
-      this.nameIndex = nameIndex;
-      this.start = start;
-      this.stop = stop;
-      this.parent = parent;
-    }
+        @Override
+        public byte[] toByteArray() throws IOException {
+            return toByteArray(false);
+        }
 
-    @Override
-    public final byte[] toByteArray() {
-      return toByteArray(false);
-    }
+        @Override
+        public byte[] toByteArray(boolean shrink) throws IOException {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
-    @Override
-    public final byte[] toByteArray(boolean shrink) {
-      ByteBuffer buffer = ByteBuffer.allocate(SPAN_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
-      buffer.putInt(nameIndex);
-      buffer.putInt(start);
-      buffer.putInt(stop);
-      return buffer.array();
-    }
+            try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
+                for (StringPoolSpan span : spans) {
+                    byte[] encodedSpan = span.toByteArray(shrink);
+                    if (encodedSpan.length != StringPoolSpan.SPAN_LENGTH) {
+                        throw new IllegalStateException("Encountered a span of invalid length.");
+                    }
+                    payload.write(encodedSpan);
+                }
+                payload.writeInt(RES_STRING_POOL_SPAN_END);
+            }
 
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      StringPoolSpan that = (StringPoolSpan)o;
-      return nameIndex == that.nameIndex &&
-             start == that.start &&
-             stop == that.stop &&
-             Objects.equals(parent, that.parent);
-    }
+            return baos.toByteArray();
+        }
 
-    @Override
-    public int hashCode() {
-      return Objects.hash(nameIndex, start, stop, parent);
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            StringPoolStyle that = (StringPoolStyle) o;
+            return Objects.equals(spans, that.spans);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(spans);
+        }
+
+        /**
+         * Returns a brief description of the contents of this style. The representation of this
+         * information is subject to change, but below is a typical example:
+         *
+         * <pre>"StringPoolStyle{spans=[StringPoolSpan{foo, start=0, stop=5}, ...]}"</pre>
+         */
+        @Override
+        public String toString() {
+            return String.format("StringPoolStyle{spans=%s}", spans);
+        }
     }
 
     /**
-     * Returns a brief description of this span. The representation of this information is subject
-     * to change, but below is a typical example:
-     *
-     * <pre>"StringPoolSpan{foo, start=0, stop=5}"</pre>
+     * Represents a styled span associated with a specific string.
      */
-    @Override
-    public String toString() {
-      return String.format("StringPoolSpan{%s, start=%d, stop=%d}",
-          parent.getString(nameIndex), start, stop);
+    private static class StringPoolSpan implements SerializableResource {
+        static final int SPAN_LENGTH = 12;
+
+        private final int nameIndex;
+        private final int start;
+        private final int stop;
+        private final StringPoolChunk parent;
+
+        private StringPoolSpan(int nameIndex, int start, int stop, StringPoolChunk parent) {
+            this.nameIndex = nameIndex;
+            this.start = start;
+            this.stop = stop;
+            this.parent = parent;
+        }
+
+        static StringPoolSpan create(ByteBuffer buffer, int offset, StringPoolChunk parent) {
+            int nameIndex = buffer.getInt(offset);
+            int start = buffer.getInt(offset + 4);
+            int stop = buffer.getInt(offset + 8);
+            return new StringPoolSpan(nameIndex, start, stop, parent);
+        }
+
+        @Override
+        public final byte[] toByteArray() {
+            return toByteArray(false);
+        }
+
+        @Override
+        public final byte[] toByteArray(boolean shrink) {
+            ByteBuffer buffer = ByteBuffer.allocate(SPAN_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
+            buffer.putInt(nameIndex);
+            buffer.putInt(start);
+            buffer.putInt(stop);
+            return buffer.array();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            StringPoolSpan that = (StringPoolSpan) o;
+            return nameIndex == that.nameIndex &&
+                    start == that.start &&
+                    stop == that.stop &&
+                    Objects.equals(parent, that.parent);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(nameIndex, start, stop, parent);
+        }
+
+        /**
+         * Returns a brief description of this span. The representation of this information is subject
+         * to change, but below is a typical example:
+         *
+         * <pre>"StringPoolSpan{foo, start=0, stop=5}"</pre>
+         */
+        @Override
+        public String toString() {
+            return String.format("StringPoolSpan{%s, start=%d, stop=%d}",
+                    parent.getString(nameIndex), start, stop);
+        }
     }
-  }
 }
