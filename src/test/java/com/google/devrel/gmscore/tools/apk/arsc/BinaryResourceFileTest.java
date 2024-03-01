@@ -37,7 +37,7 @@ import java.util.zip.ZipFile;
  */
 @RunWith(JUnit4.class)
 public final class BinaryResourceFileTest {
-    private File apk = new File(getClass().getClassLoader().getResource("test.apk").getPath());
+    private final File apk = new File(getClass().getClassLoader().getResource("test.apk").getPath());
 
     /**
      * Returns all files in an apk that match a given regular expression.
@@ -106,4 +106,22 @@ public final class BinaryResourceFileTest {
 
         Assert.assertEquals(newString, arsc2String);
     }
+
+//    @Test
+//    public void dumpArsc() throws Exception {
+//        byte[] arscBytes = getFiles(apk, Pattern.compile("resources.arsc")).get("resources.arsc");
+//        BinaryResourceFile arsc = new BinaryResourceFile(arscBytes);
+//
+//        try (java.io.FileOutputStream out = new java.io.FileOutputStream("G:/in.arsc")) {
+//            out.write(arscBytes);
+//        }
+//
+//        byte[] arscBytes2 = arsc.toByteArray(true);
+//
+//        try (java.io.FileOutputStream out = new java.io.FileOutputStream("G:/out.arsc")) {
+//            out.write(arscBytes2);
+//        }
+//
+//        new BinaryResourceFile(arscBytes2);
+//    }
 }
