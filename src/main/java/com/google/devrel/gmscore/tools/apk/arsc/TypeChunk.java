@@ -16,8 +16,7 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
-import androidx.collection.IntObjectMap;
-import androidx.collection.MutableIntObjectMap;
+import androidx.collection.*;
 
 import com.google.common.base.Preconditions;
 import com.google.common.io.LittleEndianDataOutputStream;
@@ -31,7 +30,8 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.*;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Represents a type chunk, which contains the resource values for a specific resource type and
@@ -57,10 +57,13 @@ public final class TypeChunk extends Chunk {
      * The offset (from {@code offset}) in the original buffer where {@code entries} start.
      */
     private final int entriesStart;
+
     /**
      * A sparse list of resource entries defined by this chunk.
+     * If a value is null then it means no entry.
      */
-    private final Map<Integer, Entry> entries = new TreeMap<>();
+    private final MutableObjectList<Entry> entries;
+
     /**
      * The resource configuration that these resource entries correspond to.
      */
@@ -73,16 +76,14 @@ public final class TypeChunk extends Chunk {
         entryCount = buffer.getInt();
         entriesStart = buffer.getInt();
         configuration = BinaryResourceConfiguration.create(buffer);
+        entries = new MutableObjectList<>(entryCount);
     }
 
     @Override
     protected void init(ByteBuffer buffer) {
         int offset = this.offset + entriesStart;
         for (int i = 0; i < entryCount; ++i) {
-            Entry entry = Entry.create(buffer, offset, this);
-            if (entry != null) {
-                entries.put(i, entry);
-            }
+            entries.add(Entry.create(buffer, offset, this));
         }
     }
 
@@ -129,9 +130,10 @@ public final class TypeChunk extends Chunk {
 
     /**
      * Returns a sparse list of 0-based indices to resource entries defined by this chunk.
+     * Null values mean no entry exists at that index.
      */
-    public Map<Integer, Entry> getEntries() {
-        return Collections.unmodifiableMap(entries);
+    public ObjectList<Entry> getEntries() {
+        return entries;
     }
 
     /**
@@ -143,7 +145,8 @@ public final class TypeChunk extends Chunk {
         int typeId = getId();
         return resourceId.packageId() == packageId
                 && resourceId.typeId() == typeId
-                && entries.containsKey(resourceId.entryId());
+                && resourceId.entryId() < entries.getSize()
+                && entries.get(resourceId.entryId()) != null;
     }
 
     /**
@@ -170,12 +173,8 @@ public final class TypeChunk extends Chunk {
      * @param entry The entry to override, or null if the entry should be removed at this location.
      */
     public void overrideEntry(int index, @Nullable Entry entry) {
-        if (index >= 0 && index < entryCount) {
-            if (entry != null) {
-                entries.put(index, entry);
-            } else {
-                entries.remove(index);
-            }
+        if (index >= 0 && index < entries.getSize()) {
+            entries.set(index, entry);
         }
     }
 
