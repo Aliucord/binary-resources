@@ -16,9 +16,9 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import androidx.collection.MutableIntObjectMap;
+
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMap.Builder;
 import com.google.common.io.LittleEndianDataOutputStream;
 import com.google.common.primitives.Shorts;
 
@@ -29,7 +29,6 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Map;
 
 /**
  * Represents a generic chunk.
@@ -185,7 +184,7 @@ public abstract class Chunk implements SerializableResource {
      *
      * @param buffer The buffer to be repositioned.
      */
-    private final void seekToEndOfChunk(ByteBuffer buffer) {
+    private void seekToEndOfChunk(ByteBuffer buffer) {
         buffer.position(offset + chunkSize);
     }
 
@@ -292,19 +291,17 @@ public abstract class Chunk implements SerializableResource {
         TABLE_TYPE(0x0201),
         TABLE_TYPE_SPEC(0x0202),
         TABLE_LIBRARY(0x0203),
-        TABLE_OVERLAYABLE(0x204),
-        TABLE_OVERLAYABLE_POLICY(0x205),
-        TABLE_STAGED_ALIAS(0x206),
-        ;
+        TABLE_OVERLAYABLE(0x0204),
+        TABLE_OVERLAYABLE_POLICY(0x0205),
+        TABLE_STAGED_ALIAS(0x0206);
 
-        private static final Map<Short, Type> FROM_SHORT;
+        private static final MutableIntObjectMap<Type> FROM_SHORT;
 
         static {
-            Builder<Short, Type> builder = ImmutableMap.builder();
+            FROM_SHORT = new MutableIntObjectMap<>(values().length);
             for (Type type : values()) {
-                builder.put(type.code(), type);
+                FROM_SHORT.put(type.code, type);
             }
-            FROM_SHORT = builder.build();
         }
 
         private final short code;

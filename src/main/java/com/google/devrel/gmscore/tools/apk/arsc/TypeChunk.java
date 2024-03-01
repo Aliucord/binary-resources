@@ -16,10 +16,14 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import androidx.collection.IntObjectMap;
+import androidx.collection.MutableIntObjectMap;
+
 import com.google.common.base.Preconditions;
 import com.google.common.io.LittleEndianDataOutputStream;
 import com.google.common.primitives.UnsignedBytes;
 
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
@@ -285,7 +289,7 @@ public final class TypeChunk extends Chunk {
         private final int flags;
         private final int keyIndex;
         private final BinaryResourceValue value;
-        private final Map<Integer, BinaryResourceValue> values;
+        private final IntObjectMap<BinaryResourceValue> values;
         private final int parentEntry;
         private final TypeChunk parent;
 
@@ -293,7 +297,7 @@ public final class TypeChunk extends Chunk {
                       int flags,
                       int keyIndex,
                       BinaryResourceValue value,
-                      Map<Integer, BinaryResourceValue> values,
+                      IntObjectMap<BinaryResourceValue> values,
                       int parentEntry,
                       TypeChunk parent) {
             this.headerSize = headerSize;
@@ -337,11 +341,12 @@ public final class TypeChunk extends Chunk {
             int flags = buffer.getShort() & 0xFFFF;
             int keyIndex = buffer.getInt();
             BinaryResourceValue value = null;
-            Map<Integer, BinaryResourceValue> values = new LinkedHashMap<>();
+            MutableIntObjectMap<BinaryResourceValue> values = null;
             int parentEntry = 0;
             if ((flags & FLAG_COMPLEX) != 0) {
                 parentEntry = buffer.getInt();
                 int valueCount = buffer.getInt();
+                values = new MutableIntObjectMap<>(valueCount);
                 for (int i = 0; i < valueCount; ++i) {
                     values.put(buffer.getInt(), BinaryResourceValue.create(buffer));
                 }
@@ -373,17 +378,31 @@ public final class TypeChunk extends Chunk {
         }
 
         /**
-         * The value of this resource entry, if this is not a complex entry. Else, null.
+         * The value of this resource entry, if this is not a complex entry.
+         *
+         * @throws IllegalStateException If this value is complex.
          */
         @Nullable
         public BinaryResourceValue value() {
+            if (isComplex()) {
+                throw new IllegalStateException("Cannot get single value for complex entry!");
+            }
+
             return value;
         }
 
         /**
          * The extra values in this resource entry if this {@link #isComplex}.
+         * The map key is the parsed value key.
+         *
+         * @throws IllegalStateException If this value is not complex.
          */
-        public Map<Integer, BinaryResourceValue> values() {
+        @NotNull
+        public IntObjectMap<BinaryResourceValue> values() {
+            if (!isComplex()) {
+                throw new IllegalStateException("Cannot get values for non-complex entry!");
+            }
+
             return values;
         }
 
@@ -413,7 +432,7 @@ public final class TypeChunk extends Chunk {
          * The total number of bytes that this {@link Entry} takes up.
          */
         public final int size() {
-            return headerSize() + (isComplex() ? values().size() * MAPPING_SIZE : BinaryResourceValue.SIZE);
+            return headerSize() + (isComplex() ? values.getSize() * MAPPING_SIZE : BinaryResourceValue.SIZE);
         }
 
         /**
@@ -444,11 +463,11 @@ public final class TypeChunk extends Chunk {
             buffer.putInt(keyIndex());
             if (isComplex()) {
                 buffer.putInt(parentEntry());
-                buffer.putInt(values().size());
-                for (Map.Entry<Integer, BinaryResourceValue> entry : values().entrySet()) {
-                    buffer.putInt(entry.getKey());
-                    buffer.put(entry.getValue().toByteArray(shrink));
-                }
+                buffer.putInt(values.getSize());
+                IntObjectMapIterator.forEachIndexed(values, (key, value) -> {
+                    buffer.putInt(key);
+                    buffer.put(value.toByteArray(shrink));
+                });
             } else {
                 BinaryResourceValue value = value();
                 Preconditions.checkNotNull(value, "A non-complex TypeChunk entry must have a value.");

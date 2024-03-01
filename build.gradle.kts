@@ -35,7 +35,7 @@ android {
 
 dependencies {
     api("com.google.guava:guava:33.0.0-android")
-    compileOnly("org.jetbrains:annotations:23.0.0")
+    implementation("androidx.collection:collection:1.4.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
