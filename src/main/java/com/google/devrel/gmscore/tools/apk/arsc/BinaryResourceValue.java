@@ -35,29 +35,65 @@ public class BinaryResourceValue implements SerializableResource {
      * The serialized size in bytes of a {@link BinaryResourceValue}.
      */
     public static final int SIZE = 8;
-    private final int size;
+
     private final Type type;
     private final int data;
+    private final int subValueKey;
 
-    private BinaryResourceValue(int size, Type type, int data) {
-        this.size = size;
+    /**
+     * Create a new resource value as not part of a complex resource.
+     *
+     * @param type The type of this resource value.
+     * @param data The raw data value of type {@code type}.
+     */
+    public BinaryResourceValue(Type type, int data) {
+        this(type, data, -1);
+    }
+
+    /**
+     * Create a new resource value.
+     *
+     * @param type The type of this resource value.
+     * @param data The raw data value of type {@code type}.
+     * @param key If this resource is a sub-resource as part of a complex resource, then
+     * this is the key of this resource inside the list of sub-resources.
+     */
+    public BinaryResourceValue(Type type, int data, int key) {
         this.type = type;
         this.data = data;
+        this.subValueKey = key;
     }
 
     public static BinaryResourceValue create(ByteBuffer buffer) {
         int size = (buffer.getShort() & 0xFFFF);
+        if (size != SIZE) {
+            throw new IllegalStateException("BinaryResourceValue must be of size 8");
+        }
+
         buffer.get();  // Unused
         Type type = Type.fromCode(buffer.get());
         int data = buffer.getInt();
-        return new BinaryResourceValue(size, type, data);
+        return new BinaryResourceValue(type, data);
+    }
+
+    public static BinaryResourceValue createComplex(ByteBuffer buffer) {
+        int key = buffer.getInt();
+        int size = (buffer.getShort() & 0xFFFF);
+        if (size != SIZE) {
+            throw new IllegalStateException("BinaryResourceValue must be of size 8");
+        }
+
+        buffer.get();  // Unused
+        Type type = Type.fromCode(buffer.get());
+        int data = buffer.getInt();
+        return new BinaryResourceValue(type, data, key);
     }
 
     /**
      * The length in bytes of this value.
      */
     public int size() {
-        return size;
+        return SIZE;
     }
 
     /**
@@ -72,6 +108,14 @@ public class BinaryResourceValue implements SerializableResource {
      */
     public int data() {
         return data;
+    }
+
+    /**
+     * If this resource is a sub-resource apart of a complex resource, then this
+     * is this resource's key in the list of sub-resources. Otherwise, -1.
+     */
+    public int key() {
+        return subValueKey;
     }
 
     @Override
@@ -94,14 +138,12 @@ public class BinaryResourceValue implements SerializableResource {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         BinaryResourceValue that = (BinaryResourceValue) o;
-        return size == that.size &&
-                data == that.data &&
-                type == that.type;
+        return data == that.data && type == that.type;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(size, type, data);
+        return Objects.hash(type, data);
     }
 
     /**

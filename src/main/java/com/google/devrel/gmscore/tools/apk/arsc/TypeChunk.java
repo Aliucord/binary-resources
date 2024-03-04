@@ -288,7 +288,7 @@ public final class TypeChunk extends Chunk {
         private final int flags;
         private final int keyIndex;
         private final BinaryResourceValue value;
-        private final IntObjectMap<BinaryResourceValue> values;
+        private final ObjectList<BinaryResourceValue> values;
         private final int parentEntry;
         private final TypeChunk parent;
 
@@ -296,7 +296,7 @@ public final class TypeChunk extends Chunk {
                       int flags,
                       int keyIndex,
                       BinaryResourceValue value,
-                      IntObjectMap<BinaryResourceValue> values,
+                      ObjectList<BinaryResourceValue> values,
                       int parentEntry,
                       TypeChunk parent) {
             this.headerSize = headerSize;
@@ -340,14 +340,14 @@ public final class TypeChunk extends Chunk {
             int flags = buffer.getShort() & 0xFFFF;
             int keyIndex = buffer.getInt();
             BinaryResourceValue value = null;
-            MutableIntObjectMap<BinaryResourceValue> values = null;
-            int parentEntry = 0;
+            MutableObjectList<BinaryResourceValue> values = null;
+            int parentEntry = -1;
             if ((flags & FLAG_COMPLEX) != 0) {
                 parentEntry = buffer.getInt();
                 int valueCount = buffer.getInt();
-                values = new MutableIntObjectMap<>(valueCount);
+                values = new MutableObjectList<>(valueCount);
                 for (int i = 0; i < valueCount; ++i) {
-                    values.put(buffer.getInt(), BinaryResourceValue.create(buffer));
+                    values.add(BinaryResourceValue.createComplex(buffer));
                 }
             } else {
                 value = BinaryResourceValue.create(buffer);
@@ -392,12 +392,11 @@ public final class TypeChunk extends Chunk {
 
         /**
          * The extra values in this resource entry if this {@link #isComplex}.
-         * The map key is the parsed value key.
          *
          * @throws IllegalStateException If this value is not complex.
          */
         @NotNull
-        public IntObjectMap<BinaryResourceValue> values() {
+        public ObjectList<BinaryResourceValue> values() {
             if (!isComplex()) {
                 throw new IllegalStateException("Cannot get values for non-complex entry!");
             }
@@ -463,10 +462,11 @@ public final class TypeChunk extends Chunk {
             if (isComplex()) {
                 buffer.putInt(parentEntry());
                 buffer.putInt(values.getSize());
-                IntObjectMapIterator.forEachIndexed(values, (key, value) -> {
-                    buffer.putInt(key);
+                for (int i = 0; i < values.getSize(); i++) {
+                    BinaryResourceValue value = values.get(i);
+                    buffer.putInt(value.key());
                     buffer.put(value.toByteArray(shrink));
-                });
+                }
             } else {
                 BinaryResourceValue value = value();
                 Preconditions.checkNotNull(value, "A non-complex TypeChunk entry must have a value.");
