@@ -42,7 +42,6 @@ import java.util.Objects;
  * (configuration, resource type) combinations.
  */
 public final class TypeChunk extends Chunk {
-
     /**
      * The type identifier of the resource type this chunk is holding.
      */
@@ -130,7 +129,7 @@ public final class TypeChunk extends Chunk {
 
     /**
      * Returns a sparse list of 0-based indices to resource entries defined by this chunk.
-     * Null values mean no entry exists at that index.
+     * The returned list can have null values, meaning no entry exists at that index.
      */
     public ObjectList<Entry> getEntries() {
         return entries;
@@ -163,6 +162,15 @@ public final class TypeChunk extends Chunk {
             int index = entry.getKey() != null ? entry.getKey() : -1;
             overrideEntry(index, entry.getValue());
         }
+    }
+
+    /**
+     * Adds a new entry to the end of the entries list in this chunk.
+     *
+     * @param entry The new entry to be added. This can be null to indicate no entry.
+     */
+    public void addEntry(@Nullable Entry entry) {
+        entries.add(entry);
     }
 
     /**
