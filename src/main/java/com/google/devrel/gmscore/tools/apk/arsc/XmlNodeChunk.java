@@ -77,7 +77,7 @@ public abstract class XmlNodeChunk extends Chunk {
         Chunk parent = getParent();
         while (parent != null) {
             if (parent instanceof XmlChunk) {
-                return ((XmlChunk) parent).getString(index);
+                return ((XmlChunk) parent).getStringPool().getString(index);
             }
             parent = parent.getParent();
         }

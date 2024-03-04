@@ -16,20 +16,21 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import androidx.collection.MutableObjectList;
+import androidx.collection.ObjectList;
+
 import org.jetbrains.annotations.Nullable;
 
 import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * Represents a chunk whose payload is a list of sub-chunks.
  */
 public abstract class ChunkWithChunks extends Chunk {
 
-    private final Map<Integer, Chunk> chunks = new LinkedHashMap<>();
+    private final MutableObjectList<Chunk> chunks = new MutableObjectList<>();
 
     protected ChunkWithChunks(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
@@ -47,7 +48,7 @@ public abstract class ChunkWithChunks extends Chunk {
 
         while (offset < end) {
             Chunk chunk = Chunk.newInstance(buffer, this);
-            chunks.put(offset, chunk);
+            chunks.add(chunk);
             offset += chunk.getOriginalChunkSize();
         }
 
@@ -55,18 +56,30 @@ public abstract class ChunkWithChunks extends Chunk {
     }
 
     /**
-     * Retrieves the @{code chunks} contained in this chunk.
-     *
-     * @return map of buffer offset -> chunk contained in this chunk.
+     * Retrieves the sub-chunks contained in this chunk.
      */
-    public final Map<Integer, Chunk> getChunks() {
+    public final ObjectList<Chunk> getChunks() {
         return chunks;
     }
 
+    /**
+     * Add a new sub-chunk to this chunk.
+     * @param index The index to insert the new chunk at.
+     * @param chunk A new chunk that is allowed here.
+     * @throws IndexOutOfBoundsException If the index is out of range (`0 <= index <= size`)
+     */
+    public final void addChunk(int index, Chunk chunk) {
+        if (index < 0 || index > chunks.getSize()) {
+            throw new IndexOutOfBoundsException("Cannot insert new chunk out of bounds!");
+        }
+
+        chunks.add(index, chunk);
+    }
+
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-        for (Chunk chunk : getChunks().values()) {
+    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
+        for (int i = 0; i < chunks.getSize(); i++) {
+            Chunk chunk = chunks.get(i);
             byte[] chunkBytes = chunk.toByteArray(shrink);
             output.write(chunkBytes);
             writePad(output, chunkBytes.length);

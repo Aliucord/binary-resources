@@ -22,9 +22,9 @@ import java.nio.ByteBuffer;
 
 /**
  * Represents an XML chunk structure.
- *
- * <p>An XML chunk can contain many nodes as well as a string pool which contains all of the strings
- * referenced by the nodes.
+ * <p>
+ * An XML chunk can contain many nodes as well as a string pool which
+ * contains all of the strings referenced by the nodes.
  */
 public final class XmlChunk extends ChunkWithChunks {
 
@@ -38,14 +38,19 @@ public final class XmlChunk extends ChunkWithChunks {
     }
 
     /**
-     * Returns a string at the provided (0-based) index if the index exists in the string pool.
+     * Finds the first string pool chunk that all string values should reference.
+     *
+     * @throws IllegalStateException If this XML chunk does not contain a string pool.
      */
-    public String getString(int index) {
-        for (Chunk chunk : getChunks().values()) {
+    public StringPoolChunk getStringPool() {
+        for (int i = 0; i < getChunks().getSize(); i++) {
+            Chunk chunk = getChunks().get(i);
+
             if (chunk instanceof StringPoolChunk) {
-                return ((StringPoolChunk) chunk).getString(index);
+                return (StringPoolChunk) chunk;
             }
         }
+
         throw new IllegalStateException("XmlChunk did not contain a string pool.");
     }
 }

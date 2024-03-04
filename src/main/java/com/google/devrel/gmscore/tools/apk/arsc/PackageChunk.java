@@ -16,7 +16,6 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
-import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
@@ -91,9 +90,20 @@ public final class PackageChunk extends ChunkWithChunks {
     private final Multimap<Integer, TypeChunk> types = ArrayListMultimap.create();
 
     /**
+     * Contains a secondary reference to the string pool defined by {@link PackageChunk#keyStringsOffset}.
+     */
+    private StringPoolChunk keyStringPool;
+
+    /**
+     * Contains a secondary reference to the string pool defined by {@link PackageChunk#typeStringsOffset}.
+     */
+    private StringPoolChunk typeStringPool;
+
+    /**
      * May contain a library chunk for mapping dynamic references to resolved references.
      */
-    private Optional<LibraryChunk> libraryChunk = Optional.absent();
+    @Nullable
+    private LibraryChunk libraryChunk = null;
 
     PackageChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
@@ -109,7 +119,9 @@ public final class PackageChunk extends ChunkWithChunks {
     @Override
     protected void init(ByteBuffer buffer) {
         super.init(buffer);
-        for (Chunk chunk : getChunks().values()) {
+        for (int i = 0; i < getChunks().getSize(); i++) {
+            Chunk chunk = getChunks().get(i);
+
             if (chunk instanceof TypeChunk) {
                 TypeChunk typeChunk = (TypeChunk) chunk;
                 types.put(typeChunk.getId(), typeChunk);
@@ -117,15 +129,27 @@ public final class PackageChunk extends ChunkWithChunks {
                 TypeSpecChunk typeSpecChunk = (TypeSpecChunk) chunk;
                 typeSpecs.put(typeSpecChunk.getId(), typeSpecChunk);
             } else if (chunk instanceof LibraryChunk) {
-                if (libraryChunk.isPresent()) {
-                    throw new IllegalStateException(
-                            "Multiple library chunks present in package chunk.");
+                if (libraryChunk != null) {
+                    throw new IllegalStateException("Multiple library chunks present in the same package chunk.");
                 }
-                libraryChunk = Optional.of((LibraryChunk) chunk);
-            } else if (!(chunk instanceof StringPoolChunk) && !(chunk instanceof UnknownChunk)) {
+                libraryChunk = (LibraryChunk) chunk;
+            } else if (chunk instanceof StringPoolChunk) {
+                if (chunk.offset == offset + keyStringsOffset) {
+                    keyStringPool = (StringPoolChunk) chunk;
+                } else if (chunk.offset == offset + typeStringsOffset) {
+                    typeStringPool = (StringPoolChunk) chunk;
+                } else {
+                    throw new IllegalStateException("Unexpected StringPoolChunk at offset "
+                            + Integer.toHexString(chunk.offset));
+                }
+            } else if (!(chunk instanceof UnknownChunk)) {
                 throw new IllegalStateException(
                         String.format("PackageChunk contains an unexpected chunk: %s", chunk.getClass()));
             }
+        }
+
+        if (keyStringPool == null || typeStringPool == null) {
+            throw new IllegalStateException("Could not locate the type string pool and/or key string pool");
         }
     }
 
@@ -140,9 +164,7 @@ public final class PackageChunk extends ChunkWithChunks {
      * Returns the string pool that contains the names of the resources in this package.
      */
     public StringPoolChunk getKeyStringPool() {
-        Chunk chunk = Preconditions.checkNotNull(getChunks().get(keyStringsOffset + offset));
-        Preconditions.checkState(chunk instanceof StringPoolChunk, "Key string pool not found.");
-        return (StringPoolChunk) chunk;
+        return keyStringPool;
     }
 
     /**
@@ -150,9 +172,7 @@ public final class PackageChunk extends ChunkWithChunks {
      * "string", "color".
      */
     public StringPoolChunk getTypeStringPool() {
-        Chunk chunk = Preconditions.checkNotNull(getChunks().get(typeStringsOffset + offset));
-        Preconditions.checkState(chunk instanceof StringPoolChunk, "Type string pool not found.");
-        return (StringPoolChunk) chunk;
+        return typeStringPool;
     }
 
     /**
@@ -232,12 +252,14 @@ public final class PackageChunk extends ChunkWithChunks {
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
+    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
         int typeOffset = typeStringsOffset;
         int keyOffset = keyStringsOffset;
         int payloadOffset = 0;
-        for (Chunk chunk : getChunks().values()) {
+
+        for (int i = 0; i < getChunks().getSize(); i++) {
+            Chunk chunk = getChunks().get(i);
+
             if (chunk == getTypeStringPool()) {
                 typeOffset = payloadOffset + getHeaderSize();
             } else if (chunk == getKeyStringPool()) {

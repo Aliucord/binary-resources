@@ -53,7 +53,10 @@ public final class ResourceTableChunk extends ChunkWithChunks {
     protected void init(ByteBuffer buffer) {
         super.init(buffer);
         packages.clear();
-        for (Chunk chunk : getChunks().values()) {
+
+        for (int i = 0; i < getChunks().getSize(); i++) {
+            Chunk chunk = getChunks().get(i);
+
             if (chunk instanceof PackageChunk) {
                 PackageChunk packageChunk = (PackageChunk) chunk;
                 packages.put(packageChunk.getPackageName(), packageChunk);
