@@ -36,8 +36,8 @@ public class BinaryResourceValue implements SerializableResource {
      */
     public static final int SIZE = 8;
 
-    private final Type type;
-    private final int data;
+    private Type type;
+    private int data;
     private final int subValueKey;
 
     /**
@@ -116,6 +116,14 @@ public class BinaryResourceValue implements SerializableResource {
      */
     public int key() {
         return subValueKey;
+    }
+
+    /**
+     * Replaces the value stored inside this resource value.
+     */
+    public void setValue(Type type, int data) {
+        this.type = type;
+        this.data = data;
     }
 
     @Override
