@@ -125,7 +125,7 @@ public final class TypeChunk extends Chunk {
      * Returns the total number of entries for this type + configuration, including null entries.
      */
     public int getTotalEntryCount() {
-        return entryCount;
+        return entries.getSize();
     }
 
     /**
@@ -222,13 +222,13 @@ public final class TypeChunk extends Chunk {
      * Returns the number of bytes needed for offsets based on {@code entries}.
      */
     private int getOffsetSize() {
-        return entryCount * 4;
+        return entries.getSize() * 4;
     }
 
     private int writeEntries(DataOutput payload, ByteBuffer offsets, boolean shrink)
             throws IOException {
         int entryOffset = 0;
-        for (int i = 0; i < entryCount; ++i) {
+        for (int i = 0; i < entries.getSize(); ++i) {
             Entry entry = entries.get(i);
             if (entry == null) {
                 offsets.putInt(Entry.NO_ENTRY);
@@ -247,7 +247,7 @@ public final class TypeChunk extends Chunk {
     protected void writeHeader(ByteBuffer output) {
         int entriesStart = getHeaderSize() + getOffsetSize();
         output.putInt(id);  // Write an unsigned byte with 3 bytes padding
-        output.putInt(entryCount);
+        output.putInt(entries.getSize());
         output.putInt(entriesStart);
         output.put(configuration.toByteArray(false));
     }
@@ -292,7 +292,7 @@ public final class TypeChunk extends Chunk {
         private final int parentEntry;
         private final TypeChunk parent;
 
-        private Entry(int headerSize,
+        public Entry(int headerSize,
                       int flags,
                       int keyIndex,
                       BinaryResourceValue value,
@@ -381,7 +381,7 @@ public final class TypeChunk extends Chunk {
          *
          * @throws IllegalStateException If this value is complex.
          */
-        @Nullable
+        @NotNull
         public BinaryResourceValue value() {
             if (isComplex()) {
                 throw new IllegalStateException("Cannot get single value for complex entry!");
