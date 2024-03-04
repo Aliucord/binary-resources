@@ -34,36 +34,48 @@ import java.nio.ByteOrder;
  * Represents a generic chunk.
  */
 public abstract class Chunk implements SerializableResource {
-
     /**
      * The byte boundary to pad chunks on.
      */
     public static final int PAD_BOUNDARY = 4;
+
     /**
      * The number of bytes in every chunk that describes chunk type, header size, and chunk size.
      */
     public static final int METADATA_SIZE = 8;
+
     /**
      * The offset in bytes, from the start of the chunk, where the chunk size can be found.
      */
     private static final int CHUNK_SIZE_OFFSET = 4;
+
     /**
      * Size of the chunk header in bytes.
      */
     protected final int headerSize;
+
     /**
      * headerSize + dataSize. The total size of this chunk.
      */
     protected final int chunkSize;
+
     /**
      * Offset of this chunk from the start of the file.
      */
     protected final int offset;
+
     /**
      * The parent to this chunk, if any.
      */
     @Nullable
     private final Chunk parent;
+
+    protected Chunk(int headerSize, @Nullable Chunk parent) {
+        this.headerSize = headerSize;
+        this.chunkSize = -1;
+        this.offset = -1;
+        this.parent = parent;
+    }
 
     protected Chunk(ByteBuffer buffer, @Nullable Chunk parent) {
         this.parent = parent;

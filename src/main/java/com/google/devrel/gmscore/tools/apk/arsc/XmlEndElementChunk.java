@@ -37,6 +37,17 @@ public final class XmlEndElementChunk extends XmlNodeChunk {
      */
     private final int name;
 
+    /**
+     * Create a new end of an XML node.
+     * @param namespaceIndex The namespace URI index into the string pool or -1 of not present.
+     * @param nameIndex The node name index into the string pool.
+     */
+    public XmlEndElementChunk(int namespaceIndex, int nameIndex, @Nullable Chunk parent) {
+        super(16, -1, -1, parent);
+        this.namespace = namespaceIndex;
+        this.name = nameIndex;
+    }
+
     XmlEndElementChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
         namespace = buffer.getInt();

@@ -35,6 +35,12 @@ public abstract class XmlNodeChunk extends Chunk {
      */
     private final int comment;
 
+    protected XmlNodeChunk(int headerSize, int lineNumber, int comment, @Nullable Chunk parent) {
+        super(headerSize, parent);
+        this.lineNumber = lineNumber;
+        this.comment = comment;
+    }
+
     protected XmlNodeChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
         lineNumber = buffer.getInt();

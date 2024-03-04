@@ -36,7 +36,7 @@ public class XmlAttribute implements SerializableResource {
     private final BinaryResourceValue typedValue;
     private final XmlNodeChunk parent;
 
-    private XmlAttribute(int namespaceIndex,
+    public XmlAttribute(int namespaceIndex,
                          int nameIndex,
                          int rawValueIndex,
                          BinaryResourceValue typedValue,

@@ -70,7 +70,25 @@ public final class XmlStartElementChunk extends XmlNodeChunk {
     /**
      * The XML attributes associated with this element.
      */
-    private final List<XmlAttribute> attributes = new ArrayList<>();
+    private final List<XmlAttribute> attributes;
+
+    public XmlStartElementChunk(int namespaceIndex,
+                                int nameIndex,
+                                int idIndex,
+                                int classIndex,
+                                int styleIndex,
+                                List<XmlAttribute> attributes,
+                                @Nullable Chunk parent) {
+        super(16, -1, -1, parent);
+        this.namespace = namespaceIndex;
+        this.name = nameIndex;
+        this.attributeStart = -1;
+        this.attributeCount = -1;
+        this.idIndex = idIndex;
+        this.classIndex = classIndex;
+        this.styleIndex = styleIndex;
+        this.attributes = attributes;
+    }
 
     XmlStartElementChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
@@ -81,6 +99,7 @@ public final class XmlStartElementChunk extends XmlNodeChunk {
         Preconditions.checkState(attributeSize == XmlAttribute.SIZE,
                 "attributeSize is wrong size. Got %s, want %s", attributeSize, XmlAttribute.SIZE);
         attributeCount = (buffer.getShort() & 0xFFFF);
+        attributes = new ArrayList<>(attributeCount);
 
         // The following indices are 1-based and need to be adjusted.
         idIndex = (buffer.getShort() & 0xFFFF) - 1;
@@ -122,6 +141,13 @@ public final class XmlStartElementChunk extends XmlNodeChunk {
      */
     public String getName() {
         return getString(name);
+    }
+
+    /**
+     * Returns the index of this chunk name into the string pool.
+     */
+    public int getNameIndex() {
+        return name;
     }
 
     /**
