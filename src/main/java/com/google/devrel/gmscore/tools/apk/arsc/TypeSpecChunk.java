@@ -16,6 +16,8 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import androidx.collection.MutableIntList;
+
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.UnsignedBytes;
 
@@ -38,17 +40,17 @@ public final class TypeSpecChunk extends Chunk {
     /**
      * Resource configuration masks.
      */
-    private final int[] resources;
+    private final MutableIntList resourceFlags;
 
     TypeSpecChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
         id = UnsignedBytes.toInt(buffer.get());
         buffer.position(buffer.position() + 3);  // Skip 3 bytes for packing
         int resourceCount = buffer.getInt();
-        resources = new int[resourceCount];
+        resourceFlags = new MutableIntList(resourceCount);
 
         for (int i = 0; i < resourceCount; ++i) {
-            resources[i] = buffer.getInt();
+            resourceFlags.add(buffer.getInt());
         }
     }
 
@@ -64,7 +66,32 @@ public final class TypeSpecChunk extends Chunk {
      * Returns the number of resource entries that this chunk has configuration masks for.
      */
     public int getResourceCount() {
-        return resources.length;
+        return resourceFlags.getSize();
+    }
+
+    /**
+     * Get spec flags for a specific resource
+     *
+     * @param index TODO this
+     * @throws IndexOutOfBoundsException If the index is out of range (index < 0 || index >= size()).
+     * @return The spec flags for this resource.
+     */
+    public int getResourceFlags(int index) {
+        if (index < 0 || index >= getResourceCount()) {
+            throw new IndexOutOfBoundsException("Resource index does not exist!");
+        }
+
+        return resourceFlags.get(index);
+    }
+
+    /**
+     * Adds a resource to this type spec chunk.
+     * @param flags The flags of the resource
+     * @return The index of the new resource.
+     */
+    public int addResource(int flags) {
+        assert resourceFlags.add(flags);
+        return resourceFlags.getSize() - 1;
     }
 
     @Override
@@ -101,14 +128,13 @@ public final class TypeSpecChunk extends Chunk {
         // id is an unsigned byte in the range [0-255]. It is guaranteed to be non-negative.
         // Because our output is in little-endian, we are making use of the 4 byte packing here
         output.putInt(id);
-        output.putInt(resources.length);
+        output.putInt(resourceFlags.getSize());
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-        for (int resource : resources) {
-            output.writeInt(resource);
+    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
+        for (int i = 0; i < resourceFlags.getSize(); i++) {
+            output.writeInt(resourceFlags.get(i));
         }
     }
 }
