@@ -334,8 +334,7 @@ public final class TypeChunk extends Chunk {
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
+    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ByteBuffer offsets = ByteBuffer.allocate(getOffsetSize()).order(ByteOrder.LITTLE_ENDIAN);
         try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
@@ -543,7 +542,7 @@ public final class TypeChunk extends Chunk {
             } else {
                 BinaryResourceValue value = value();
                 Preconditions.checkNotNull(value, "A non-complex TypeChunk entry must have a value.");
-                buffer.put(value.toByteArray());
+                value.writeToBuffer(buffer);
             }
             return buffer.array();
         }

@@ -134,11 +134,17 @@ public class BinaryResourceValue implements SerializableResource {
     @Override
     public byte[] toByteArray(boolean shrink) {
         ByteBuffer buffer = ByteBuffer.allocate(SIZE).order(ByteOrder.LITTLE_ENDIAN);
+        writeToBuffer(buffer);
+        return buffer.array();
+    }
+
+    public int writeToBuffer(ByteBuffer buffer) {
+        int start = buffer.position();
         buffer.putShort((short) size());
         buffer.put((byte) 0);  // Unused
         buffer.put(type().code());
         buffer.putInt(data());
-        return buffer.array();
+        return buffer.position() - start;
     }
 
     @Override
