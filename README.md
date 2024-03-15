@@ -1,22 +1,15 @@
-# binary-resources
+# binary-resources ![Maven version](https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Fmaven.aliucord.com%2Fsnapshots%2Fcom%2Faliucord%2Fbinary-resources%2Fmaven-metadata.xml)
 
 This is a fork of Android's tools/base/apkparser/binary-resources (as part of ArscBlamer)
-made to be usable on mobile devices as a lightweight library.
+made to be usable on Android devices directly as a lightweight library.
 
-## License
-
-```
-Copyright 2016 Google Inc. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+## Usage
+`build.gradle.kts`:
+```kt
+respositories {
+    maven("https://maven.aliucord.com/snapshots")
+}
+dependencies {
+    implementation("com.aliucord:binary-resources:1.0.0")
+}
 ```

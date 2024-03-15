@@ -3,12 +3,11 @@ plugins {
     id("com.android.library") version "8.3.0"
 }
 
-group = "com.aliucord.apkparser"
 version = "1.0.0"
 
 android {
     compileSdk = 34
-    namespace = "com.aliucord.apkparser.binaryresources"
+    namespace = "com.aliucord.binaryresources"
 
     defaultConfig {
         minSdk = 21
@@ -43,27 +42,29 @@ dependencies {
 
 afterEvaluate {
     publishing {
-        repositories {
-            val sonatypeUsername = System.getenv("SONATYPE_USERNAME")
-            val sonatypePassword = System.getenv("SONATYPE_PASSWORD")
+        publications {
+            register(project.name, MavenPublication::class.java) {
+                groupId = "com.aliucord"
+                artifactId = "binary-resources"
 
-            if (sonatypeUsername == null || sonatypePassword == null)
-                mavenLocal()
-            else {
-                maven {
-                    name = "sonatype"
-                    credentials {
-                        username = sonatypeUsername
-                        password = sonatypePassword
-                    }
-                    setUrl("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-                }
+                from(components["release"])
             }
         }
 
-        publications {
-            register(project.name, MavenPublication::class.java) {
-                from(components["release"])
+        repositories {
+            val username = System.getenv("MAVEN_USERNAME")
+            val password = System.getenv("MAVEN_PASSWORD")
+
+            if (username != null && password != null) {
+                maven {
+                    credentials {
+                        this.username = username
+                        this.password = password
+                    }
+                    setUrl("https://maven.aliucord.com/snapshots")
+                }
+            } else {
+                mavenLocal()
             }
         }
     }
