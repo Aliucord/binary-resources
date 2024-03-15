@@ -1,6 +1,6 @@
 plugins {
     id("maven-publish")
-    id("com.android.library") version "8.2.1"
+    id("com.android.library") version "8.3.0"
 }
 
 group = "com.aliucord.apkparser"
