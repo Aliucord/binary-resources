@@ -16,16 +16,15 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import androidx.collection.MutableObjectList;
+import androidx.collection.ObjectList;
+
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Given an arsc file, maps the contents of the file.
@@ -35,7 +34,7 @@ public final class BinaryResourceFile implements SerializableResource {
     /**
      * The chunks contained in this resource file.
      */
-    private final List<Chunk> chunks = new ArrayList<>();
+    private final MutableObjectList<Chunk> chunks = new MutableObjectList<>(40);
 
     public BinaryResourceFile(byte[] buf) {
         ByteBuffer buffer = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
@@ -45,29 +44,17 @@ public final class BinaryResourceFile implements SerializableResource {
     }
 
     /**
-     * Given an input stream, reads the stream until the end and returns a {@link BinaryResourceFile}
-     * representing the contents of the stream.
-     *
-     * @param is The input stream to read from.
-     * @return BinaryResourceFile represented by the @{link InputStream}.
-     * @throws IOException
-     */
-    public static BinaryResourceFile fromInputStream(InputStream is) throws IOException {
-        byte[] buf = ByteStreams.toByteArray(is);
-        return new BinaryResourceFile(buf);
-    }
-
-    /**
      * Returns the chunks in this resource file.
      */
-    public List<Chunk> getChunks() {
-        return Collections.unmodifiableList(chunks);
+    public ObjectList<Chunk> getChunks() {
+        return chunks;
     }
 
     @Override
     public byte[] toByteArray(boolean shrink) throws IOException {
         ByteArrayDataOutput output = ByteStreams.newDataOutput();
-        for (Chunk chunk : chunks) {
+        for (int i = 0; i < chunks.getSize(); i++) {
+            Chunk chunk = chunks.get(i);
             output.write(chunk.toByteArray(shrink));
         }
         return output.toByteArray();
