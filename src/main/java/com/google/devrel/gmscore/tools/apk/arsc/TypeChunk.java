@@ -16,7 +16,9 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
-import androidx.collection.*;
+import androidx.collection.MutableIntList;
+import androidx.collection.MutableObjectList;
+import androidx.collection.ObjectList;
 
 import com.google.common.base.Preconditions;
 import com.google.common.io.LittleEndianDataOutputStream;
@@ -30,8 +32,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Represents a type chunk, which contains the resource values for a specific resource type and
@@ -58,15 +59,32 @@ public final class TypeChunk extends Chunk {
     private final int entriesStart;
 
     /**
-     * A sparse list of resource entries defined by this chunk.
-     * If a value is null then it means no entry.
+     * The raw entry offsets based, not including the offset of {@link TypeChunk#entriesStart},
+     * into the buffer {@link TypeChunk#srcBuffer}.
      */
-    private final MutableObjectList<Entry> entries;
+    private final MutableIntList entryOffsets;
+
+    /**
+     * Additional overrides (or additions) to the entry list not in the original chunk.
+     * Mapped by index -> new entry.
+     */
+    private final TreeMap<Integer, Entry> entryOverrides = new TreeMap<>();
+
+    /**
+     * The amount of additional entries added to this chunk through {@link TypeChunk#entryOverrides}
+     * that do not override an existing entry.
+     */
+    private int newEntryCount = 0;
 
     /**
      * The resource configuration that these resource entries correspond to.
      */
     private BinaryResourceConfiguration configuration;
+
+    /**
+     * The buffer to read entries based on {@link TypeChunk#entryOffsets} from.
+     */
+    private ByteBuffer srcBuffer = null;
 
     TypeChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
@@ -75,14 +93,14 @@ public final class TypeChunk extends Chunk {
         entryCount = buffer.getInt();
         entriesStart = buffer.getInt();
         configuration = BinaryResourceConfiguration.create(buffer);
-        entries = new MutableObjectList<>(entryCount);
+        entryOffsets = new MutableIntList(entryCount);
     }
 
     @Override
     protected void init(ByteBuffer buffer) {
-        int offset = this.offset + entriesStart;
+        srcBuffer = buffer;
         for (int i = 0; i < entryCount; ++i) {
-            entries.add(Entry.create(buffer, offset, this));
+            entryOffsets.add(buffer.getInt());
         }
     }
 
@@ -124,15 +142,28 @@ public final class TypeChunk extends Chunk {
      * Returns the total number of entries for this type + configuration, including null entries.
      */
     public int getTotalEntryCount() {
-        return entries.getSize();
+        return entryCount + newEntryCount;
+    }
+
+    private int getEntryOffset(int index) {
+        return offset + entriesStart + entryOffsets.get(index);
     }
 
     /**
-     * Returns a sparse list of 0-based indices to resource entries defined by this chunk.
-     * The returned list can have null values, meaning no entry exists at that index.
+     * Gets the entry at a specific index. If this entry has been overridden,
+     * then the new entry will be returned, likewise with a newly added entry.
      */
-    public ObjectList<Entry> getEntries() {
-        return entries;
+    @Nullable
+    public Entry getEntry(int index) {
+        if (index < 0 || index >= getTotalEntryCount()) {
+            return null;
+        }
+
+        return entryOverrides.containsKey(index)
+                ? entryOverrides.get(index)
+                : (entryOffsets.get(index) != Entry.NO_ENTRY
+                ? Entry.newInstance(srcBuffer, getEntryOffset(index), this)
+                : null);
     }
 
     /**
@@ -144,8 +175,11 @@ public final class TypeChunk extends Chunk {
         int typeId = getId();
         return resourceId.packageId() == packageId
                 && resourceId.typeId() == typeId
-                && resourceId.entryId() < entries.getSize()
-                && entries.get(resourceId.entryId()) != null;
+                && resourceId.entryId() < getTotalEntryCount()
+                && (
+                entryOverrides.containsKey(resourceId.entryId())
+                        ? entryOverrides.get(resourceId.entryId()) != null
+                        : entryOffsets.get(resourceId.entryId()) != Entry.NO_ENTRY);
     }
 
     /**
@@ -168,9 +202,12 @@ public final class TypeChunk extends Chunk {
      * Adds a new entry to the end of the entries list in this chunk.
      *
      * @param entry The new entry to be added. This can be null to indicate no entry.
+     * @return The entry index of the newly added resource.
      */
-    public void addEntry(@Nullable Entry entry) {
-        entries.add(entry);
+    public int addEntry(@Nullable Entry entry) {
+        entryOverrides.put(getTotalEntryCount(), entry);
+        newEntryCount++;
+        return getTotalEntryCount() - 1;
     }
 
     /**
@@ -181,8 +218,8 @@ public final class TypeChunk extends Chunk {
      * @param entry The entry to override, or null if the entry should be removed at this location.
      */
     public void overrideEntry(int index, @Nullable Entry entry) {
-        if (index >= 0 && index < entries.getSize()) {
-            entries.set(index, entry);
+        if (index >= 0 && index < getTotalEntryCount()) {
+            entryOverrides.put(index, entry);
         }
     }
 
@@ -230,32 +267,68 @@ public final class TypeChunk extends Chunk {
      * Returns the number of bytes needed for offsets based on {@code entries}.
      */
     private int getOffsetSize() {
-        return entries.getSize() * 4;
+        return getTotalEntryCount() * 4;
     }
 
-    private int writeEntries(DataOutput payload, ByteBuffer offsets, boolean shrink)
-            throws IOException {
-        int entryOffset = 0;
-        for (int i = 0; i < entries.getSize(); ++i) {
-            Entry entry = entries.get(i);
-            if (entry == null) {
-                offsets.putInt(Entry.NO_ENTRY);
+    private int writeEntries(DataOutput payload, ByteBuffer offsets, boolean shrink) throws IOException {
+        int offset = 0;
+        for (int i = 0; i < entryOffsets.getSize(); ++i) {
+            if (!entryOverrides.isEmpty() && entryOverrides.containsKey(i)) {
+                Entry entry = entryOverrides.get(i);
+                if (entry == null) {
+                    offsets.putInt(Entry.NO_ENTRY);
+                } else {
+                    byte[] encodedEntry = entry.toByteArray(shrink);
+                    payload.write(encodedEntry);
+                    offsets.putInt(offset);
+                    offset += encodedEntry.length;
+                }
             } else {
-                byte[] encodedEntry = entry.toByteArray(shrink);
-                payload.write(encodedEntry);
-                offsets.putInt(entryOffset);
-                entryOffset += encodedEntry.length;
+                if (entryOffsets.get(i) == Entry.NO_ENTRY) {
+                    offsets.putInt(Entry.NO_ENTRY);
+                } else {
+                    int entryOffset = getEntryOffset(i);
+                    int entrySize = Entry.readSize(srcBuffer, entryOffset);
+                    payload.write(srcBuffer.array(), entryOffset, entrySize);
+                    offsets.putInt(offset);
+                    offset += entrySize;
+                }
             }
         }
-        entryOffset = writePad(payload, entryOffset);
-        return entryOffset;
+
+        if (newEntryCount > 0) {
+            @SuppressWarnings("unchecked")
+            TreeMap<Integer, Entry> newEntries = (TreeMap<Integer, Entry>) entryOverrides.clone();
+
+            // Remove all overridden entries to only write new ones
+            final Iterator<Integer> indexIterator = newEntries.keySet().iterator();
+            while (indexIterator.hasNext()) {
+                if (indexIterator.next() < entryCount) {
+                    indexIterator.remove();
+                }
+            }
+
+            for (Entry entry : newEntries.values()) {
+                if (entry == null) {
+                    offsets.putInt(Entry.NO_ENTRY);
+                } else {
+                    byte[] encodedEntry = entry.toByteArray(shrink);
+                    payload.write(encodedEntry);
+                    offsets.putInt(offset);
+                    offset += encodedEntry.length;
+                }
+            }
+        }
+
+        offset = writePad(payload, offset);
+        return offset;
     }
 
     @Override
     protected void writeHeader(ByteBuffer output) {
         int entriesStart = getHeaderSize() + getOffsetSize();
         output.putInt(id);  // Write an unsigned byte with 3 bytes padding
-        output.putInt(entries.getSize());
+        output.putInt(getTotalEntryCount());
         output.putInt(entriesStart);
         output.put(configuration.toByteArray(false));
     }
@@ -301,12 +374,12 @@ public final class TypeChunk extends Chunk {
         private final TypeChunk parent;
 
         public Entry(int headerSize,
-                      int flags,
-                      int keyIndex,
-                      BinaryResourceValue value,
-                      ObjectList<BinaryResourceValue> values,
-                      int parentEntry,
-                      TypeChunk parent) {
+                     int flags,
+                     int keyIndex,
+                     BinaryResourceValue value,
+                     ObjectList<BinaryResourceValue> values,
+                     int parentEntry,
+                     TypeChunk parent) {
             this.headerSize = headerSize;
             this.flags = flags;
             this.keyIndex = keyIndex;
@@ -316,34 +389,9 @@ public final class TypeChunk extends Chunk {
             this.parent = parent;
         }
 
-        /**
-         * Creates a new {@link Entry} whose contents start at the 0-based position in
-         * {@code buffer} given by a 4-byte value read from {@code buffer} and then added to
-         * {@code baseOffset}. If the value read from {@code buffer} is equal to {@link #NO_ENTRY}, then
-         * null is returned as there is no resource at that position.
-         *
-         * <p>Otherwise, this position is parsed and returned as an {@link Entry}.
-         *
-         * @param buffer A buffer positioned at an offset to an {@link Entry}.
-         * @param baseOffset Offset that must be added to the value at {@code buffer}'s position.
-         * @param parent The {@link TypeChunk} that this resource entry belongs to.
-         * @return New {@link Entry} or null if there is no resource at this location.
-         */
-        @Nullable
-        public static Entry create(ByteBuffer buffer, int baseOffset, TypeChunk parent) {
-            int offset = buffer.getInt();
-            if (offset == NO_ENTRY) {
-                return null;
-            }
-            int position = buffer.position();
-            buffer.position(baseOffset + offset);  // Set buffer position to resource entry start
-            Entry result = newInstance(buffer, parent);
-            buffer.position(position);  // Restore buffer position
-            return result;
-        }
+        private static Entry newInstance(ByteBuffer buffer, int offset, TypeChunk parent) {
+            buffer.position(offset);
 
-        @Nullable
-        private static Entry newInstance(ByteBuffer buffer, TypeChunk parent) {
             int headerSize = buffer.getShort() & 0xFFFF;
             int flags = buffer.getShort() & 0xFFFF;
             int keyIndex = buffer.getInt();
@@ -360,7 +408,24 @@ public final class TypeChunk extends Chunk {
             } else {
                 value = BinaryResourceValue.create(buffer);
             }
+
             return new Entry(headerSize, flags, keyIndex, value, values, parentEntry, parent);
+        }
+
+        private static int readSize(ByteBuffer buffer, int offset) {
+            buffer.position(offset);
+            int headerSize = buffer.getShort() & 0xFFFF;
+            int flags = buffer.getShort() & 0xFFFF;
+            if ((flags & FLAG_COMPLEX) != 0) {
+                buffer.getInt(); // keyIndex
+                buffer.getInt(); // parentEntry
+                int valueCount = buffer.getInt();
+
+                return headerSize + valueCount * MAPPING_SIZE;
+            } else {
+//                Log.i("binary-resources", headerSize + " @" + Integer.toHexString(offset));
+                return headerSize + BinaryResourceValue.SIZE;
+            }
         }
 
         /**
