@@ -65,11 +65,6 @@ public final class BinaryResourceFile implements SerializableResource {
     }
 
     @Override
-    public byte[] toByteArray() throws IOException {
-        return toByteArray(false);
-    }
-
-    @Override
     public byte[] toByteArray(boolean shrink) throws IOException {
         ByteArrayDataOutput output = ByteStreams.newDataOutput();
         for (Chunk chunk : chunks) {

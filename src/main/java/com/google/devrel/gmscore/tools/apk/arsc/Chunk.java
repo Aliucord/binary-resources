@@ -255,11 +255,6 @@ public abstract class Chunk implements SerializableResource {
         return currentLength;
     }
 
-    @Override
-    public final byte[] toByteArray() throws IOException {
-        return toByteArray(false);
-    }
-
     /**
      * Converts this chunk into an array of bytes representation. Normally you will not need to
      * override this method unless your header changes based on the contents / size of the payload.

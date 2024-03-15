@@ -571,11 +571,6 @@ public class BinaryResourceConfiguration implements SerializableResource {
     }
 
     @Override
-    public final byte[] toByteArray() {
-        return toByteArray(false);
-    }
-
-    @Override
     public final byte[] toByteArray(boolean shrink) {
         ByteBuffer buffer = ByteBuffer.allocate(size()).order(ByteOrder.LITTLE_ENDIAN);
         buffer.putInt(size());

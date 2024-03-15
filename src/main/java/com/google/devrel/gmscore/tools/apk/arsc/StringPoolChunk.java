@@ -434,11 +434,6 @@ public final class StringPoolChunk extends Chunk {
         }
 
         @Override
-        public byte[] toByteArray() throws IOException {
-            return toByteArray(false);
-        }
-
-        @Override
         public byte[] toByteArray(boolean shrink) throws IOException {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
@@ -504,11 +499,6 @@ public final class StringPoolChunk extends Chunk {
             int start = buffer.getInt(offset + 4);
             int stop = buffer.getInt(offset + 8);
             return new StringPoolSpan(nameIndex, start, stop, parent);
-        }
-
-        @Override
-        public final byte[] toByteArray() {
-            return toByteArray(false);
         }
 
         @Override

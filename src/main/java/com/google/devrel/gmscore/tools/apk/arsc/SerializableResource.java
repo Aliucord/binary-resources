@@ -29,7 +29,9 @@ public interface SerializableResource {
      * @return An array of bytes representing this resource.
      * @throws IOException
      */
-    byte[] toByteArray() throws IOException;
+    default byte[] toByteArray() throws IOException {
+        return toByteArray(false);
+    }
 
     /**
      * Converts this resource into an array of bytes representation.

@@ -123,11 +123,6 @@ public class XmlAttribute implements SerializableResource {
     }
 
     @Override
-    public byte[] toByteArray() {
-        return toByteArray(false);
-    }
-
-    @Override
     public byte[] toByteArray(boolean shrink) {
         ByteBuffer buffer = ByteBuffer.allocate(SIZE).order(ByteOrder.LITTLE_ENDIAN);
         buffer.putInt(namespaceIndex());

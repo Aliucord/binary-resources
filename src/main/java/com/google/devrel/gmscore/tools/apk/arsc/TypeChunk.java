@@ -520,11 +520,6 @@ public final class TypeChunk extends Chunk {
         }
 
         @Override
-        public final byte[] toByteArray() {
-            return toByteArray(false);
-        }
-
-        @Override
         public final byte[] toByteArray(boolean shrink) {
             ByteBuffer buffer = ByteBuffer.allocate(size());
             buffer.order(ByteOrder.LITTLE_ENDIAN);

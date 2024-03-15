@@ -124,11 +124,6 @@ public final class LibraryChunk extends Chunk {
         }
 
         @Override
-        public byte[] toByteArray() throws IOException {
-            return toByteArray(false);
-        }
-
-        @Override
         public byte[] toByteArray(boolean shrink) throws IOException {
             ByteBuffer buffer = ByteBuffer.allocate(SIZE).order(ByteOrder.LITTLE_ENDIAN);
             buffer.putInt(packageId());
