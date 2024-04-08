@@ -17,7 +17,6 @@
 package com.google.devrel.gmscore.tools.apk.arsc;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Objects;
 
 /**
@@ -37,10 +36,10 @@ public class XmlAttribute implements SerializableResource {
     private final XmlNodeChunk parent;
 
     public XmlAttribute(int namespaceIndex,
-                         int nameIndex,
-                         int rawValueIndex,
-                         BinaryResourceValue typedValue,
-                         XmlNodeChunk parent) {
+                        int nameIndex,
+                        int rawValueIndex,
+                        BinaryResourceValue typedValue,
+                        XmlNodeChunk parent) {
         this.namespaceIndex = namespaceIndex;
         this.nameIndex = nameIndex;
         this.rawValueIndex = rawValueIndex;
@@ -123,13 +122,11 @@ public class XmlAttribute implements SerializableResource {
     }
 
     @Override
-    public byte[] toByteArray(boolean shrink) {
-        ByteBuffer buffer = ByteBuffer.allocate(SIZE).order(ByteOrder.LITTLE_ENDIAN);
+    public void writeTo(GrowableByteBuffer buffer) {
         buffer.putInt(namespaceIndex());
         buffer.putInt(nameIndex());
         buffer.putInt(rawValueIndex());
-        buffer.put(typedValue().toByteArray(shrink));
-        return buffer.array();
+        typedValue().writeTo(buffer);
     }
 
     @Override

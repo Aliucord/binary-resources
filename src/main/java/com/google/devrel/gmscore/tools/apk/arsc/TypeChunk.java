@@ -21,17 +21,12 @@ import androidx.collection.MutableObjectList;
 import androidx.collection.ObjectList;
 
 import com.google.common.base.Preconditions;
-import com.google.common.io.LittleEndianDataOutputStream;
 import com.google.common.primitives.UnsignedBytes;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.*;
 
 /**
@@ -146,7 +141,7 @@ public final class TypeChunk extends Chunk {
     }
 
     private int getEntryOffset(int index) {
-        return offset + entriesStart + entryOffsets.get(index);
+        return getOriginalOffset() + entriesStart + entryOffsets.get(index);
     }
 
     /**
@@ -270,27 +265,40 @@ public final class TypeChunk extends Chunk {
         return getTotalEntryCount() * 4;
     }
 
-    private int writeEntries(DataOutput payload, ByteBuffer offsets, boolean shrink) throws IOException {
+    /**
+     * Write 0s a specified amount of times as placeholder offsets to be filled in later.
+     */
+    private void writePlaceholderOffsets(GrowableByteBuffer buffer, int count) {
+        for (int i = 0; i < count; i++) {
+            buffer.putInt(0); // Will be filled in later
+        }
+    }
+
+    private void writeEntries(GrowableByteBuffer buffer, int offsetsStart) {
         int offset = 0;
+        int offsetIdx = 0;
+
         for (int i = 0; i < entryOffsets.getSize(); ++i) {
             if (!entryOverrides.isEmpty() && entryOverrides.containsKey(i)) {
                 Entry entry = entryOverrides.get(i);
                 if (entry == null) {
-                    offsets.putInt(Entry.NO_ENTRY);
+                    buffer.putInt(offsetsStart + (offsetIdx++ * 4), Entry.NO_ENTRY);
                 } else {
-                    byte[] encodedEntry = entry.toByteArray(shrink);
-                    payload.write(encodedEntry);
-                    offsets.putInt(offset);
-                    offset += encodedEntry.length;
+                    int entryStart = buffer.position();
+                    entry.writeTo(buffer);
+                    int entrySize = buffer.position() - entryStart;
+
+                    buffer.putInt(offsetsStart + (offsetIdx++ * 4), offset);
+                    offset += entrySize;
                 }
             } else {
                 if (entryOffsets.get(i) == Entry.NO_ENTRY) {
-                    offsets.putInt(Entry.NO_ENTRY);
+                    buffer.putInt(offsetsStart + (offsetIdx++ * 4), Entry.NO_ENTRY);
                 } else {
                     int entryOffset = getEntryOffset(i);
                     int entrySize = Entry.readSize(srcBuffer, entryOffset);
-                    payload.write(srcBuffer.array(), entryOffset, entrySize);
-                    offsets.putInt(offset);
+                    buffer.put(srcBuffer.array(), entryOffset, entrySize);
+                    buffer.putInt(offsetsStart + (offsetIdx++ * 4), offset);
                     offset += entrySize;
                 }
             }
@@ -310,38 +318,36 @@ public final class TypeChunk extends Chunk {
 
             for (Entry entry : newEntries.values()) {
                 if (entry == null) {
-                    offsets.putInt(Entry.NO_ENTRY);
+                    buffer.putInt(offsetsStart + (offsetIdx++ * 4), Entry.NO_ENTRY);
                 } else {
-                    byte[] encodedEntry = entry.toByteArray(shrink);
-                    payload.write(encodedEntry);
-                    offsets.putInt(offset);
-                    offset += encodedEntry.length;
+                    int entryStart = buffer.position();
+                    entry.writeTo(buffer);
+                    int entrySize = buffer.position() - entryStart;
+
+                    buffer.putInt(offsetsStart + (offsetIdx++ * 4), offset);
+                    offset += entrySize;
                 }
             }
         }
 
-        offset = writePad(payload, offset);
-        return offset;
+        ChunkUtils.writePad(buffer, offset);
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        int entriesStart = getHeaderSize() + getOffsetSize();
-        output.putInt(id);  // Write an unsigned byte with 3 bytes padding
-        output.putInt(getTotalEntryCount());
-        output.putInt(entriesStart);
-        output.put(configuration.toByteArray(false));
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
+        int entriesStart = getOriginalHeaderSize() + getOffsetSize();
+        buffer.putInt(id);  // Write an unsigned byte with 3 bytes padding
+        buffer.putInt(getTotalEntryCount());
+        buffer.putInt(entriesStart);
+        configuration.writeTo(buffer);
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ByteBuffer offsets = ByteBuffer.allocate(getOffsetSize()).order(ByteOrder.LITTLE_ENDIAN);
-        try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
-            writeEntries(payload, offsets, shrink);
-        }
-        output.write(offsets.array());
-        output.write(baos.toByteArray());
+    protected void writePayload(GrowableByteBuffer buffer) {
+        int start = buffer.position();
+        writePlaceholderOffsets(buffer, getTotalEntryCount());
+        writeEntries(buffer, start);
     }
 
     /**
@@ -520,9 +526,7 @@ public final class TypeChunk extends Chunk {
         }
 
         @Override
-        public final byte[] toByteArray(boolean shrink) {
-            ByteBuffer buffer = ByteBuffer.allocate(size());
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
+        public void writeTo(GrowableByteBuffer buffer) {
             buffer.putShort((short) headerSize());
             buffer.putShort((short) flags());
             buffer.putInt(keyIndex());
@@ -532,14 +536,13 @@ public final class TypeChunk extends Chunk {
                 for (int i = 0; i < values.getSize(); i++) {
                     BinaryResourceValue value = values.get(i);
                     buffer.putInt(value.key());
-                    buffer.put(value.toByteArray(shrink));
+                    value.writeTo(buffer);
                 }
             } else {
                 BinaryResourceValue value = value();
                 Preconditions.checkNotNull(value, "A non-complex TypeChunk entry must have a value.");
-                value.writeToBuffer(buffer);
+                value.writeTo(buffer);
             }
-            return buffer.array();
         }
 
         @Override

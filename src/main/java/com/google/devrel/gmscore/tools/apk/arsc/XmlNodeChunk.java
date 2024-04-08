@@ -96,10 +96,10 @@ public abstract class XmlNodeChunk extends Chunk {
      * method is final.
      */
     @Override
-    protected final void writeHeader(ByteBuffer output) {
-        super.writeHeader(output);
-        output.putInt(lineNumber);
-        output.putInt(comment);
+    protected final void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
+        buffer.putInt(lineNumber);
+        buffer.putInt(comment);
     }
 
     /**

@@ -16,29 +16,20 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import androidx.annotation.CallSuper;
 import androidx.collection.MutableIntObjectMap;
 
 import com.google.common.base.Preconditions;
-import com.google.common.io.LittleEndianDataOutputStream;
 import com.google.common.primitives.Shorts;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 /**
  * Represents a generic chunk.
  */
 public abstract class Chunk implements SerializableResource {
-    /**
-     * The byte boundary to pad chunks on.
-     */
-    public static final int PAD_BOUNDARY = 4;
-
     /**
      * The number of bytes in every chunk that describes chunk type, header size, and chunk size.
      */
@@ -52,17 +43,17 @@ public abstract class Chunk implements SerializableResource {
     /**
      * Size of the chunk header in bytes.
      */
-    protected final int headerSize;
+    private final int headerSize;
 
     /**
      * headerSize + dataSize. The total size of this chunk.
      */
-    protected final int chunkSize;
+    private final int chunkSize;
 
     /**
      * Offset of this chunk from the start of the file.
      */
-    protected final int offset;
+    private final int offset;
 
     /**
      * The parent to this chunk, if any.
@@ -171,21 +162,28 @@ public abstract class Chunk implements SerializableResource {
         return parent;
     }
 
+    /**
+     * Get the type of this chunk
+     */
     protected abstract Type getType();
 
     /**
-     * Returns the size of this chunk's header.
+     * Get the original offset of this chunk from the start of the file.
      */
-    public final int getHeaderSize() {
+    public final int getOriginalOffset() {
+        return offset;
+    }
+
+    /**
+     * Returns the size of this chunk's header. This should always stay constant even when the chunk changes.
+     */
+    public final int getOriginalHeaderSize() {
         return headerSize;
     }
 
     /**
      * Returns the size of this chunk when it was first read from a buffer. A chunk's size can deviate
      * from this value when its data is modified (e.g. adding an entry, changing a string).
-     *
-     * <p>A chunk's current size can be determined from the length of the byte array returned from
-     * {@link #toByteArray}.
      */
     public final int getOriginalChunkSize() {
         return chunkSize;
@@ -202,82 +200,45 @@ public abstract class Chunk implements SerializableResource {
 
     /**
      * Writes the type and header size. We don't know how big this chunk will be (it could be
-     * different since the last time we checked), so this needs to be passed in.
+     * different since the last time we checked), so it is overwritten later after the chunk.
+     * <p/>
+     * This can be overridden to add additional header properties after the basic chunk header.
      *
-     * @param output The buffer that will be written to.
-     * @param chunkSize The total size of this chunk in bytes, including the header.
+     * @param buffer The buffer that will be written to.
      */
-    protected final void writeHeader(ByteBuffer output, int chunkSize) {
-        int start = output.position();
-        output.putShort(getType().code());
-        output.putShort((short) headerSize);
-        output.putInt(chunkSize);
-        writeHeader(output);
-        int headerBytes = output.position() - start;
-        Preconditions.checkState(headerBytes == getHeaderSize(),
-                "Written header is wrong size. Got %s, want %s", headerBytes, getHeaderSize());
-    }
-
-    /**
-     * Writes the remaining header (after the type, {@code headerSize}, and {@code chunkSize}).
-     *
-     * @param output The buffer that the header will be written to.
-     */
-    protected void writeHeader(ByteBuffer output) {
+    @CallSuper
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        buffer.putShort(getType().code());
+        buffer.putShort((short) getOriginalHeaderSize());
+        buffer.putInt(0); // This will be filled in later after writing the payload
     }
 
     /**
      * Writes the chunk payload. The payload is data in a chunk which is not in
-     * the first {@code headerSize} bytes of the chunk.
+     * the first {@link Chunk#getOriginalHeaderSize()} bytes of the chunk.
      *
-     * @param output The stream that the payload will be written to.
-     * @param header The already-written header. This can be modified to fix payload offsets.
-     * @param shrink True if this payload should be optimized for size.
-     * @throws IOException Thrown if {@code output} could not be written to (out of memory).
+     * @param buffer The buffer that this will be written to.
      */
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-    }
-
-    /**
-     * Pads {@code output} until {@code currentLength} is on a 4-byte boundary.
-     *
-     * @param output The {@link DataOutput} that will be padded.
-     * @param currentLength The current length, in bytes, of {@code output}
-     * @return The new length of {@code output}
-     * @throws IOException Thrown if {@code output} could not be written to.
-     */
-    protected int writePad(DataOutput output, int currentLength) throws IOException {
-        while (currentLength % PAD_BOUNDARY != 0) {
-            output.write(0);
-            ++currentLength;
-        }
-        return currentLength;
-    }
+    protected abstract void writePayload(GrowableByteBuffer buffer);
 
     /**
      * Converts this chunk into an array of bytes representation. Normally you will not need to
      * override this method unless your header changes based on the contents / size of the payload.
      */
     @Override
-    public final byte[] toByteArray(boolean shrink) throws IOException {
-        ByteBuffer header = ByteBuffer.allocate(getHeaderSize()).order(ByteOrder.LITTLE_ENDIAN);
-        writeHeader(header, 0);  // The chunk size isn't known yet. This will be filled in later.
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    public void writeTo(GrowableByteBuffer buffer) {
+        int start = buffer.position();
+        writeHeader(buffer);
 
-        try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
-            writePayload(payload, header, shrink);
-        }
+        int headerSize = buffer.position() - start;
+        Preconditions.checkState(headerSize == getOriginalHeaderSize(),
+                "Written header is wrong size. Got %s, want %s", headerSize, getOriginalHeaderSize());
 
-        byte[] payloadBytes = baos.toByteArray();
-        int chunkSize = getHeaderSize() + payloadBytes.length;
-        header.putInt(CHUNK_SIZE_OFFSET, chunkSize);
+        writePayload(buffer);
 
-        // Combine results
-        ByteBuffer result = ByteBuffer.allocate(chunkSize).order(ByteOrder.LITTLE_ENDIAN);
-        result.put(header.array());
-        result.put(payloadBytes);
-        return result.array();
+        // Fill in chunk size that was previously left as 0
+        int chunkSize = buffer.position() - start;
+        buffer.putInt(start + CHUNK_SIZE_OFFSET, chunkSize);
     }
 
     /**

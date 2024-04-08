@@ -95,8 +95,8 @@ public final class ResourceTableChunk extends ChunkWithChunks {
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        super.writeHeader(output);
-        output.putInt(packages.size());
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
+        buffer.putInt(packages.size());
     }
 }

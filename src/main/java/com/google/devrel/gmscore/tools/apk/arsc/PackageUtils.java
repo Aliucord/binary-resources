@@ -61,7 +61,7 @@ public final class PackageUtils {
      * @param buffer The buffer that will be written to.
      * @param packageName The package name that will be written to the buffer.
      */
-    public static void writePackageName(ByteBuffer buffer, String packageName) {
+    public static void writePackageName(GrowableByteBuffer buffer, String packageName) {
         byte[] nameBytes = packageName.getBytes(StandardCharsets.UTF_16LE);
         buffer.put(nameBytes, 0, Math.min(nameBytes.length, PACKAGE_NAME_SIZE));
         if (nameBytes.length < PACKAGE_NAME_SIZE) {

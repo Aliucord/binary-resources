@@ -24,7 +24,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.UnsignedBytes;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.*;
 
 /**
@@ -571,8 +570,7 @@ public class BinaryResourceConfiguration implements SerializableResource {
     }
 
     @Override
-    public final byte[] toByteArray(boolean shrink) {
-        ByteBuffer buffer = ByteBuffer.allocate(size()).order(ByteOrder.LITTLE_ENDIAN);
+    public void writeTo(GrowableByteBuffer buffer) {
         buffer.putInt(size());
         buffer.putShort((short) mcc());
         buffer.putShort((short) mnc());
@@ -611,8 +609,6 @@ public class BinaryResourceConfiguration implements SerializableResource {
         }
 
         buffer.put(unknown());
-
-        return buffer.array();
     }
 
     @Override

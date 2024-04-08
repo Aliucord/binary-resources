@@ -16,30 +16,14 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
-import java.io.IOException;
-
 /**
  * A resource, typically a @{link Chunk}, that can be converted to an array of bytes.
  */
 public interface SerializableResource {
 
     /**
-     * Converts this resource into an array of bytes representation.
-     *
-     * @return An array of bytes representing this resource.
-     * @throws IOException
+     * Writes this resource to a byte buffer at the current position.
+     * When finished, the byte buffer should be advanced to the end of the current buffer.
      */
-    default byte[] toByteArray() throws IOException {
-        return toByteArray(false);
-    }
-
-    /**
-     * Converts this resource into an array of bytes representation.
-     *
-     * @param shrink True if, when converting to a byte array, this resource can modify the returned
-     * bytes in an effort to reduce the size.
-     * @return An array of bytes representing this resource.
-     * @throws IOException
-     */
-    byte[] toByteArray(boolean shrink) throws IOException;
+    void writeTo(GrowableByteBuffer buffer);
 }

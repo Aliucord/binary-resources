@@ -18,13 +18,11 @@ package com.google.devrel.gmscore.tools.apk.arsc;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
- * A chunk whose contents are unknown. This is a placeholder until we add a proper chunk for the
- * unknown type.
+ * A chunk whose contents are unknown (or currently unhandled).
+ * This is a placeholder to copy over the existing data.
  */
 public final class UnknownChunk extends Chunk {
 
@@ -37,22 +35,22 @@ public final class UnknownChunk extends Chunk {
     UnknownChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
 
-        type = Type.fromCode(buffer.getShort(offset));
-        header = new byte[headerSize - Chunk.METADATA_SIZE];
-        payload = new byte[chunkSize - headerSize];
+        type = Type.fromCode(buffer.getShort(getOriginalOffset()));
+        header = new byte[getOriginalHeaderSize() - Chunk.METADATA_SIZE];
+        payload = new byte[getOriginalChunkSize() - getOriginalHeaderSize()];
         buffer.get(header);
         buffer.get(payload);
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        output.put(header);
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
+        buffer.put(header);
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-        output.write(payload);
+    protected void writePayload(GrowableByteBuffer buffer) {
+        buffer.put(payload);
     }
 
     @Override

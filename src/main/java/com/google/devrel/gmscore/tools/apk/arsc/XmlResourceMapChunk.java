@@ -18,8 +18,6 @@ package com.google.devrel.gmscore.tools.apk.arsc;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,9 +52,9 @@ public class XmlResourceMapChunk extends Chunk {
     }
 
     private List<Integer> enumerateResources(ByteBuffer buffer) {
-        int resourceCount = (getOriginalChunkSize() - getHeaderSize()) / RESOURCE_SIZE;
+        int resourceCount = (getOriginalChunkSize() - getOriginalHeaderSize()) / RESOURCE_SIZE;
         List<Integer> result = new ArrayList<>(resourceCount);
-        int offset = this.offset + getHeaderSize();
+        int offset = getOriginalOffset() + getOriginalHeaderSize();
         buffer.mark();
         buffer.position(offset);
 
@@ -81,11 +79,9 @@ public class XmlResourceMapChunk extends Chunk {
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-        super.writePayload(output, header, shrink);
+    protected void writePayload(GrowableByteBuffer buffer) {
         for (Integer resource : resources) {
-            output.writeInt(resource);
+            buffer.putInt(resource);
         }
     }
 }

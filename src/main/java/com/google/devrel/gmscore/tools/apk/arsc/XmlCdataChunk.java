@@ -18,8 +18,6 @@ package com.google.devrel.gmscore.tools.apk.arsc;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
@@ -63,11 +61,9 @@ public final class XmlCdataChunk extends XmlNodeChunk {
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-        super.writePayload(output, header, shrink);
-        output.writeInt(rawValue);
-        output.write(binaryResourceValue.toByteArray());
+    protected void writePayload(GrowableByteBuffer buffer) {
+        buffer.putInt(rawValue);
+        binaryResourceValue.writeTo(buffer);
     }
 
     /**
