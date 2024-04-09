@@ -21,7 +21,6 @@ import androidx.collection.ObjectList;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 
 /**
  * Given an arsc file, maps the contents of the file.
@@ -53,22 +52,10 @@ public final class BinaryResourceFile implements SerializableResource {
         return chunks;
     }
 
-    /**
-     * Serializes all the chunks in this binary resource file and returns
-     * a byte array representing this arsc file.
-     *
-     * @return An array of bytes representing this arsc file.
-     */
+
+    @Override
     public byte[] toByteArray() {
-        int estimatedSize = originalSize * 9 / 8; // A bit bigger to account for any additions
-        GrowableByteBuffer buffer = new GrowableByteBuffer(estimatedSize)
-                .order(ByteOrder.LITTLE_ENDIAN);
-
-        this.writeTo(buffer);
-
-        byte[] copy = new byte[buffer.position()];
-        System.arraycopy(buffer.array(), buffer.arrayOffset(), copy, 0, buffer.position());
-        return copy;
+        return toByteArray((int) (originalSize * 1.1)); // A bit bigger to account for any additions
     }
 
     @Override

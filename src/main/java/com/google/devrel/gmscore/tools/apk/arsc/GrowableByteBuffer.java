@@ -64,6 +64,11 @@ public class GrowableByteBuffer {
         return buffer.get(index);
     }
 
+    public GrowableByteBuffer get(byte[] array) {
+        buffer.get(array);
+        return this;
+    }
+
     @NonNull
     public GrowableByteBuffer put(int index, byte b) {
         ensureSpace(1);
@@ -262,5 +267,23 @@ public class GrowableByteBuffer {
 
     public int arrayOffset() {
         return buffer.arrayOffset();
+    }
+
+    public GrowableByteBuffer rewind() {
+        buffer.rewind();
+        return this;
+    }
+
+    public int remaining() {
+        return buffer.remaining();
+    }
+
+    public int limit() {
+        return buffer.limit();
+    }
+
+    public GrowableByteBuffer limit(int newLimit) {
+        buffer.limit(newLimit);
+        return this;
     }
 }

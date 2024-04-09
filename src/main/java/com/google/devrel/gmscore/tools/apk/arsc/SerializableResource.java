@@ -16,6 +16,8 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
+import java.nio.ByteOrder;
+
 /**
  * A resource, typically a @{link Chunk}, that can be converted to an array of bytes.
  */
@@ -26,4 +28,26 @@ public interface SerializableResource {
      * When finished, the byte buffer should be advanced to the end of the current buffer.
      */
     void writeTo(GrowableByteBuffer buffer);
+
+    /**
+     * Serializes this resource and returns a byte array representing this resource.
+     * @param assumedOutputSize The guessed output size necessary for the buffer in order to preallocate enough.
+     */
+    default byte[] toByteArray(int assumedOutputSize) {
+        GrowableByteBuffer buffer = new GrowableByteBuffer(assumedOutputSize)
+                .order(ByteOrder.LITTLE_ENDIAN);
+
+        this.writeTo(buffer);
+
+        byte[] copy = new byte[buffer.position()];
+        System.arraycopy(buffer.array(), buffer.arrayOffset(), copy, 0, buffer.position());
+        return copy;
+    }
+
+    /**
+     * Serializes this resource and returns a byte array representing this resource.
+     */
+    default byte[] toByteArray() {
+        return toByteArray(512);
+    }
 }
