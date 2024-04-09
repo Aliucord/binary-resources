@@ -10,6 +10,6 @@ respositories {
     maven("https://maven.aliucord.com/snapshots")
 }
 dependencies {
-    implementation("com.aliucord:binary-resources:1.0.0")
+    implementation("com.aliucord:binary-resources:2.0.0")
 }
 ```
