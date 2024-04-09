@@ -103,11 +103,6 @@ public final class PackageChunk extends ChunkWithChunks {
     @Nullable
     private LibraryChunk libraryChunk = null;
 
-    /**
-     * The chunk offset populated when writing this chunk.
-     */
-    private int writtenChunkOffset;
-
     PackageChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
         id = buffer.getInt();
@@ -245,7 +240,6 @@ public final class PackageChunk extends ChunkWithChunks {
 
     @Override
     protected void writeHeader(GrowableByteBuffer buffer) {
-        writtenChunkOffset = buffer.position();
         super.writeHeader(buffer);
         buffer.putInt(id);
         PackageUtils.writePackageName(buffer, packageName);
@@ -258,6 +252,7 @@ public final class PackageChunk extends ChunkWithChunks {
 
     @Override
     protected void writePayload(GrowableByteBuffer buffer) {
+        int headerOffset = buffer.position() - getOriginalHeaderSize();
         int typeOffset = 0;
         int keyOffset = 0;
 
@@ -265,9 +260,9 @@ public final class PackageChunk extends ChunkWithChunks {
             Chunk chunk = getChunks().get(i);
 
             if (chunk == getTypeStringPool()) {
-                typeOffset = buffer.position() + getOriginalHeaderSize();
+                typeOffset = buffer.position() - headerOffset;
             } else if (chunk == getKeyStringPool()) {
-                keyOffset = buffer.position() + getOriginalHeaderSize();
+                keyOffset = buffer.position() - headerOffset;
             }
 
             int chunkStart = buffer.position();
@@ -277,7 +272,7 @@ public final class PackageChunk extends ChunkWithChunks {
             ChunkUtils.writePad(buffer, chunkSize);
         }
 
-        buffer.putInt(writtenChunkOffset + TYPE_OFFSET_OFFSET, typeOffset);
-        buffer.putInt(writtenChunkOffset + KEY_OFFSET_OFFSET, keyOffset);
+        buffer.putInt(headerOffset + TYPE_OFFSET_OFFSET, typeOffset);
+        buffer.putInt(headerOffset + KEY_OFFSET_OFFSET, keyOffset);
     }
 }
