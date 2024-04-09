@@ -18,10 +18,7 @@ package com.google.devrel.gmscore.tools.apk.arsc;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -56,7 +53,7 @@ public final class LibraryChunk extends Chunk {
 
     private List<Entry> enumerateEntries(ByteBuffer buffer) {
         List<Entry> result = new ArrayList<>(entryCount);
-        int offset = this.offset + getHeaderSize();
+        int offset = getOriginalOffset() + getOriginalHeaderSize();
         int endOffset = offset + Entry.SIZE * entryCount;
 
         while (offset < endOffset) {
@@ -72,16 +69,15 @@ public final class LibraryChunk extends Chunk {
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        super.writeHeader(output);
-        output.putInt(entries.size());
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
+        buffer.putInt(entries.size());
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
+    protected void writePayload(GrowableByteBuffer buffer) {
         for (Entry entry : entries) {
-            output.write(entry.toByteArray(shrink));
+            entry.writeTo(buffer);
         }
     }
 
@@ -124,11 +120,9 @@ public final class LibraryChunk extends Chunk {
         }
 
         @Override
-        public byte[] toByteArray(boolean shrink) throws IOException {
-            ByteBuffer buffer = ByteBuffer.allocate(SIZE).order(ByteOrder.LITTLE_ENDIAN);
+        public void writeTo(GrowableByteBuffer buffer) {
             buffer.putInt(packageId());
             PackageUtils.writePackageName(buffer, packageName());
-            return buffer.array();
         }
 
         @Override

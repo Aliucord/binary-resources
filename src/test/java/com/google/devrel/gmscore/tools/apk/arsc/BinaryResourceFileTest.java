@@ -116,7 +116,7 @@ public final class BinaryResourceFileTest {
 //            out.write(arscBytes);
 //        }
 //
-//        byte[] arscBytes2 = arsc.toByteArray(true);
+//        byte[] arscBytes2 = arsc.toByteArray();
 //
 //        try (java.io.FileOutputStream out = new java.io.FileOutputStream("G:/out.arsc")) {
 //            out.write(arscBytes2);

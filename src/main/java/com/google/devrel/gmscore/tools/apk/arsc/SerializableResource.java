@@ -16,7 +16,7 @@
 
 package com.google.devrel.gmscore.tools.apk.arsc;
 
-import java.io.IOException;
+import java.nio.ByteOrder;
 
 /**
  * A resource, typically a @{link Chunk}, that can be converted to an array of bytes.
@@ -24,22 +24,30 @@ import java.io.IOException;
 public interface SerializableResource {
 
     /**
-     * Converts this resource into an array of bytes representation.
-     *
-     * @return An array of bytes representing this resource.
-     * @throws IOException
+     * Writes this resource to a byte buffer at the current position.
+     * When finished, the byte buffer should be advanced to the end of the current buffer.
      */
-    default byte[] toByteArray() throws IOException {
-        return toByteArray(false);
+    void writeTo(GrowableByteBuffer buffer);
+
+    /**
+     * Serializes this resource and returns a byte array representing this resource.
+     * @param assumedOutputSize The guessed output size necessary for the buffer in order to preallocate enough.
+     */
+    default byte[] toByteArray(int assumedOutputSize) {
+        GrowableByteBuffer buffer = new GrowableByteBuffer(assumedOutputSize)
+                .order(ByteOrder.LITTLE_ENDIAN);
+
+        this.writeTo(buffer);
+
+        byte[] copy = new byte[buffer.position()];
+        System.arraycopy(buffer.array(), buffer.arrayOffset(), copy, 0, buffer.position());
+        return copy;
     }
 
     /**
-     * Converts this resource into an array of bytes representation.
-     *
-     * @param shrink True if, when converting to a byte array, this resource can modify the returned
-     * bytes in an effort to reduce the size.
-     * @return An array of bytes representing this resource.
-     * @throws IOException
+     * Serializes this resource and returns a byte array representing this resource.
      */
-    byte[] toByteArray(boolean shrink) throws IOException;
+    default byte[] toByteArray() {
+        return toByteArray(512);
+    }
 }

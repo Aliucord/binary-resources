@@ -22,8 +22,6 @@ import com.google.common.collect.Multimap;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashMap;
@@ -134,13 +132,13 @@ public final class PackageChunk extends ChunkWithChunks {
                 }
                 libraryChunk = (LibraryChunk) chunk;
             } else if (chunk instanceof StringPoolChunk) {
-                if (chunk.offset == offset + keyStringsOffset) {
+                if (chunk.getOriginalOffset() == getOriginalOffset() + keyStringsOffset) {
                     keyStringPool = (StringPoolChunk) chunk;
-                } else if (chunk.offset == offset + typeStringsOffset) {
+                } else if (chunk.getOriginalOffset() == getOriginalOffset() + typeStringsOffset) {
                     typeStringPool = (StringPoolChunk) chunk;
                 } else {
                     throw new IllegalStateException("Unexpected StringPoolChunk at offset "
-                            + Integer.toHexString(chunk.offset));
+                            + Integer.toHexString(chunk.getOriginalOffset()));
                 }
             } else if (!(chunk instanceof UnknownChunk)) {
                 throw new IllegalStateException(
@@ -241,35 +239,40 @@ public final class PackageChunk extends ChunkWithChunks {
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        output.putInt(id);
-        PackageUtils.writePackageName(output, packageName);
-        output.putInt(0);  // typeStringsOffset. This value can't be computed here.
-        output.putInt(lastPublicType);
-        output.putInt(0);  // keyStringsOffset. This value can't be computed here.
-        output.putInt(lastPublicKey);
-        output.putInt(typeIdOffset);
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
+        buffer.putInt(id);
+        PackageUtils.writePackageName(buffer, packageName);
+        buffer.putInt(0);  // typeStringsOffset. This value can't be computed here.
+        buffer.putInt(lastPublicType);
+        buffer.putInt(0);  // keyStringsOffset. This value can't be computed here.
+        buffer.putInt(lastPublicKey);
+        buffer.putInt(typeIdOffset);
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
-        int typeOffset = typeStringsOffset;
-        int keyOffset = keyStringsOffset;
-        int payloadOffset = 0;
+    protected void writePayload(GrowableByteBuffer buffer) {
+        int headerOffset = buffer.position() - getOriginalHeaderSize();
+        int typeOffset = 0;
+        int keyOffset = 0;
 
         for (int i = 0; i < getChunks().getSize(); i++) {
             Chunk chunk = getChunks().get(i);
 
             if (chunk == getTypeStringPool()) {
-                typeOffset = payloadOffset + getHeaderSize();
+                typeOffset = buffer.position() - headerOffset;
             } else if (chunk == getKeyStringPool()) {
-                keyOffset = payloadOffset + getHeaderSize();
+                keyOffset = buffer.position() - headerOffset;
             }
-            byte[] chunkBytes = chunk.toByteArray(shrink);
-            output.write(chunkBytes);
-            payloadOffset = writePad(output, chunkBytes.length);
+
+            int chunkStart = buffer.position();
+            chunk.writeTo(buffer);
+            int chunkSize = buffer.position() - chunkStart;
+
+            ChunkUtils.writePad(buffer, chunkSize);
         }
-        header.putInt(TYPE_OFFSET_OFFSET, typeOffset);
-        header.putInt(KEY_OFFSET_OFFSET, keyOffset);
+
+        buffer.putInt(headerOffset + TYPE_OFFSET_OFFSET, typeOffset);
+        buffer.putInt(headerOffset + KEY_OFFSET_OFFSET, keyOffset);
     }
 }

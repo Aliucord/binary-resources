@@ -21,8 +21,6 @@ import androidx.collection.ObjectList;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
@@ -39,13 +37,14 @@ public abstract class ChunkWithChunks extends Chunk {
     @Override
     protected void init(ByteBuffer buffer) {
         super.init(buffer);
-        chunks.clear();
-        int start = this.offset + getHeaderSize();
-        int offset = start;
-        int end = this.offset + getOriginalChunkSize();
+
         int position = buffer.position();
+        int start = getOriginalOffset() + getOriginalHeaderSize();
+        int end = getOriginalOffset() + getOriginalChunkSize();
+
         buffer.position(start);
 
+        int offset = start;
         while (offset < end) {
             Chunk chunk = Chunk.newInstance(buffer, this);
             chunks.add(chunk);
@@ -77,12 +76,13 @@ public abstract class ChunkWithChunks extends Chunk {
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
+    protected void writePayload(GrowableByteBuffer buffer) {
         for (int i = 0; i < chunks.getSize(); i++) {
-            Chunk chunk = chunks.get(i);
-            byte[] chunkBytes = chunk.toByteArray(shrink);
-            output.write(chunkBytes);
-            writePad(output, chunkBytes.length);
+            int start = buffer.position();
+            chunks.get(i).writeTo(buffer);
+
+            int chunkSize = buffer.position() - start;
+            ChunkUtils.writePad(buffer, chunkSize);
         }
     }
 }

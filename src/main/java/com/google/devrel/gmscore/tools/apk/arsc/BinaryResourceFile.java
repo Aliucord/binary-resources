@@ -19,10 +19,6 @@ package com.google.devrel.gmscore.tools.apk.arsc;
 import androidx.collection.MutableObjectList;
 import androidx.collection.ObjectList;
 
-import com.google.common.io.ByteArrayDataOutput;
-import com.google.common.io.ByteStreams;
-
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -36,11 +32,17 @@ public final class BinaryResourceFile implements SerializableResource {
      */
     private final MutableObjectList<Chunk> chunks = new MutableObjectList<>(40);
 
+    /**
+     * The original byte size of the file used for pre-allocating when writing.
+     */
+    private final int originalSize;
+
     public BinaryResourceFile(byte[] buf) {
         ByteBuffer buffer = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN);
         while (buffer.remaining() > 0) {
             chunks.add(Chunk.newInstance(buffer));
         }
+        originalSize = buf.length;
     }
 
     /**
@@ -50,13 +52,16 @@ public final class BinaryResourceFile implements SerializableResource {
         return chunks;
     }
 
+
     @Override
-    public byte[] toByteArray(boolean shrink) throws IOException {
-        ByteArrayDataOutput output = ByteStreams.newDataOutput();
+    public byte[] toByteArray() {
+        return toByteArray((int) (originalSize * 1.1)); // A bit bigger to account for any additions
+    }
+
+    @Override
+    public void writeTo(GrowableByteBuffer buffer) {
         for (int i = 0; i < chunks.getSize(); i++) {
-            Chunk chunk = chunks.get(i);
-            output.write(chunk.toByteArray(shrink));
+            chunks.get(i).writeTo(buffer);
         }
-        return output.toByteArray();
     }
 }

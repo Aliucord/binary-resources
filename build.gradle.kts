@@ -10,7 +10,7 @@ android {
     namespace = "com.aliucord.binaryresources"
 
     defaultConfig {
-        minSdk = 21
+        minSdk = 21 // This can likely be lower
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

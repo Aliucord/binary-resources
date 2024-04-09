@@ -20,8 +20,6 @@ import com.google.common.base.Preconditions;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -115,7 +113,7 @@ public final class XmlStartElementChunk extends XmlNodeChunk {
 
     private List<XmlAttribute> enumerateAttributes(ByteBuffer buffer) {
         List<XmlAttribute> result = new ArrayList<>(attributeCount);
-        int offset = this.offset + getHeaderSize() + attributeStart;
+        int offset = getOriginalOffset() + getOriginalHeaderSize() + attributeStart;
         int endOffset = offset + XmlAttribute.SIZE * attributeCount;
         buffer.mark();
         buffer.position(offset);
@@ -162,20 +160,19 @@ public final class XmlStartElementChunk extends XmlNodeChunk {
         return Chunk.Type.XML_START_ELEMENT;
     }
 
+
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink)
-            throws IOException {
-        super.writePayload(output, header, shrink);
-        output.writeInt(namespace);
-        output.writeInt(name);
-        output.writeShort((short) XmlAttribute.SIZE);  // attribute start
-        output.writeShort((short) XmlAttribute.SIZE);
-        output.writeShort((short) attributes.size());
-        output.writeShort((short) (idIndex + 1));
-        output.writeShort((short) (classIndex + 1));
-        output.writeShort((short) (styleIndex + 1));
+    protected void writePayload(GrowableByteBuffer buffer) {
+        buffer.putInt(namespace);
+        buffer.putInt(name);
+        buffer.putShort((short) XmlAttribute.SIZE); // attribute start
+        buffer.putShort((short) XmlAttribute.SIZE);
+        buffer.putShort((short) attributes.size());
+        buffer.putShort((short) (idIndex + 1));
+        buffer.putShort((short) (classIndex + 1));
+        buffer.putShort((short) (styleIndex + 1));
         for (XmlAttribute attribute : attributes) {
-            output.write(attribute.toByteArray(shrink));
+            attribute.writeTo(buffer);
         }
     }
 

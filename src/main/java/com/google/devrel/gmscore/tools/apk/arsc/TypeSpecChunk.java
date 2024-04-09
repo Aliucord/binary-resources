@@ -23,8 +23,6 @@ import com.google.common.primitives.UnsignedBytes;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
@@ -123,18 +121,18 @@ public final class TypeSpecChunk extends Chunk {
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        super.writeHeader(output);
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        super.writeHeader(buffer);
         // id is an unsigned byte in the range [0-255]. It is guaranteed to be non-negative.
         // Because our output is in little-endian, we are making use of the 4 byte packing here
-        output.putInt(id);
-        output.putInt(resourceFlags.getSize());
+        buffer.putInt(id);
+        buffer.putInt(resourceFlags.getSize());
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
+    protected void writePayload(GrowableByteBuffer buffer) {
         for (int i = 0; i < resourceFlags.getSize(); i++) {
-            output.writeInt(resourceFlags.get(i));
+            buffer.putInt(resourceFlags.get(i));
         }
     }
 }

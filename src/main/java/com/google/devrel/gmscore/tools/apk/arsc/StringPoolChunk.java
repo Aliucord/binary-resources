@@ -20,15 +20,9 @@ import android.os.Build;
 
 import androidx.collection.*;
 
-import com.google.common.io.LittleEndianDataOutputStream;
-
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutput;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -102,13 +96,10 @@ public final class StringPoolChunk extends Chunk {
      * defined by {@link StringPoolChunk#stringOffsets}.
      */
     private ByteBuffer srcBuffer;
-
     /**
-     * True if the original {@link StringPoolChunk} shows signs of being deduped. Specifically, this
-     * is set to true if there exists a string whose offset is <= the previous offset. This is used to
-     * preserve the deduping of strings for pools that have been deduped.
+     * The chunk offset populated when writing this chunk.
      */
-    private boolean isOriginalDeduped = false;
+    private int writtenChunkOffset;
 
     StringPoolChunk(ByteBuffer buffer, @Nullable Chunk parent) {
         super(buffer, parent);
@@ -128,8 +119,8 @@ public final class StringPoolChunk extends Chunk {
         super.init(buffer);
 
         srcBuffer = buffer;
-        stringOffsets = readStringOffsets(buffer, offset + stringsStart, stringCount);
-        styles.addAll(readStyles(buffer, offset + stylesStart, styleCount));
+        stringOffsets = readStringOffsets(buffer, getOriginalOffset() + stringsStart, stringCount);
+        styles.addAll(readStyles(buffer, getOriginalOffset() + stylesStart, styleCount));
     }
 
     /**
@@ -275,22 +266,14 @@ public final class StringPoolChunk extends Chunk {
     }
 
     private int[] readStringOffsets(ByteBuffer buffer, int offset, int count) {
-        int[] results = new int[count];
-        int previousOffset = -1;
+        int[] stringOffsets = new int[count];
 
         // After the header, we now have an array of offsets for the strings in this pool.
         for (int i = 0; i < count; ++i) {
-            int stringOffset = offset + buffer.getInt();
-
-            if (stringOffset <= previousOffset) {
-                isOriginalDeduped = true;
-            }
-            previousOffset = stringOffset;
-
-            results[i] = stringOffset;
+            stringOffsets[i] = offset + buffer.getInt();
         }
 
-        return results;
+        return stringOffsets;
     }
 
     private ObjectList<StringPoolStyle> readStyles(ByteBuffer buffer, int offset, int count) {
@@ -305,25 +288,38 @@ public final class StringPoolChunk extends Chunk {
         return styles;
     }
 
-    private int writeStrings(DataOutput payload, ByteBuffer offsets, boolean shrink) throws IOException {
+    /**
+     * Write 0s a specified amount of times as placeholder offsets to be filled in later.
+     */
+    private void writePlaceholderOffsets(GrowableByteBuffer buffer, int count) {
+        for (int i = 0; i < count; i++) {
+            buffer.putInt(0); // Will be filled in later
+        }
+    }
+
+    /**
+     * Writes the string data and fills in the offset placeholders.
+     * @param buffer The buffer positioned to where the string data should be written.
+     * @param stringOffsetsStart Position in the buffer where the placeholder string offsets start
+     */
+    private void writeStrings(GrowableByteBuffer buffer, int stringOffsetsStart) {
         int currentOffset = 0;
+        int stringIdx = 0;
 
         // existing string offset -> new string offset
         MutableIntIntMap used = new MutableIntIntMap(getStringCount());
 
         for (int stringOffset : stringOffsets) {
             int existingOffset;
-            if ((shrink || isOriginalDeduped) && (existingOffset = used.getOrDefault(stringOffset, -1)) >= 0) {
-                offsets.putInt(existingOffset);
+            if ((existingOffset = used.getOrDefault(stringOffset, -1)) >= 0) {
+                buffer.putInt(stringOffsetsStart + (stringIdx++ * 4), existingOffset);
             } else {
-                if (shrink || isOriginalDeduped) {
-                    used.put(stringOffset, currentOffset);
-                }
+                used.put(stringOffset, currentOffset);
 
                 int stringLength = BinaryResourceString.decodeFullLength(srcBuffer, stringOffset, getStringType());
 
-                offsets.putInt(currentOffset);
-                payload.write(srcBuffer.array(), stringOffset, stringLength);
+                buffer.putInt(stringOffsetsStart + (stringIdx++ * 4), currentOffset);
+                buffer.put(srcBuffer.array(), stringOffset, stringLength);
                 currentOffset += stringLength;
             }
         }
@@ -333,19 +329,25 @@ public final class StringPoolChunk extends Chunk {
             String string = newStrings.get(i);
             byte[] encodedString = BinaryResourceString.encodeString(string, getStringType());
 
-            offsets.putInt(currentOffset);
-            payload.write(encodedString);
+            buffer.putInt(stringOffsetsStart + (stringIdx++ * 4), currentOffset);
+            buffer.put(encodedString);
             currentOffset += encodedString.length;
         }
 
         // ARSC files pad to a 4-byte boundary. We should do so too.
-        currentOffset = writePad(payload, currentOffset);
-        return currentOffset;
+        ChunkUtils.writePad(buffer, currentOffset);
     }
 
-    private int writeStyles(DataOutput payload, ByteBuffer offsets, boolean shrink) throws IOException {
-        if (styles.isEmpty()) return 0;
+    /**
+     * Writes the styles data and fills in the offset placeholders.
+     * @param buffer The buffer positioned to where the styles data should be written.
+     * @param styleOffsetsStart Position in the buffer where the placeholder style offsets start
+     */
+    private void writeStyles(GrowableByteBuffer buffer, int styleOffsetsStart) {
+        if (styles.isEmpty()) return;
+
         int styleOffset = 0;
+        int styleIdx = 0;
 
         // Keeps track of bytes already written
         MutableObjectIntMap<StringPoolStyle> used = new MutableObjectIntMap<>();
@@ -354,57 +356,60 @@ public final class StringPoolChunk extends Chunk {
             StringPoolStyle style = styles.get(i);
             int existingOffset;
 
-            if (shrink && (existingOffset = used.getOrDefault(style, -1)) >= 0) {
-                offsets.putInt(existingOffset);
+            if ((existingOffset = used.getOrDefault(style, -1)) >= 0) {
+                buffer.putInt(styleOffsetsStart + (styleIdx++ * 4), existingOffset);
             } else {
-                byte[] encodedStyle = style.toByteArray(shrink);
-
                 used.put(style, styleOffset);
-                payload.write(encodedStyle);
-                offsets.putInt(styleOffset);
 
-                styleOffset += encodedStyle.length;
+                int start = buffer.position();
+                style.writeTo(buffer);
+                int styleSize = buffer.position() - start;
+
+                buffer.putInt(styleOffsetsStart + (styleIdx++ * 4), styleOffset);
+
+                styleOffset += styleSize;
             }
         }
 
         // This is such a cursed format, 2 terminators??
         for (int i = 0; i < 2; i++) {
             // The end of the spans are terminated with another sentinel value
-            payload.writeInt(StringPoolStyle.RES_STRING_POOL_SPAN_END);
+            buffer.putInt(StringPoolStyle.RES_STRING_POOL_SPAN_END);
             styleOffset += 4;
         }
 
-        styleOffset = writePad(payload, styleOffset);
-
-        return styleOffset;
+        ChunkUtils.writePad(buffer, styleOffset);
     }
 
     @Override
-    protected void writeHeader(ByteBuffer output) {
-        int stringsStart = getHeaderSize() + getOffsetSize();
-        output.putInt(getStringCount());
-        output.putInt(styles.getSize());
-        output.putInt(flags);
-        output.putInt(getStringCount() == 0 ? 0 : stringsStart);
-        output.putInt(0);  // Placeholder. The styles starting offset cannot be computed at this point.
+    protected void writeHeader(GrowableByteBuffer buffer) {
+        writtenChunkOffset = buffer.position();
+        super.writeHeader(buffer);
+        int stringsStart = getOriginalHeaderSize() + getOffsetSize();
+        buffer.putInt(getStringCount());
+        buffer.putInt(styles.getSize());
+        buffer.putInt(flags);
+        buffer.putInt(getStringCount() == 0 ? 0 : stringsStart);
+        buffer.putInt(0);  // Placeholder. The styles starting offset cannot be computed at this point.
     }
 
     @Override
-    protected void writePayload(DataOutput output, ByteBuffer header, boolean shrink) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ByteBuffer offsets = ByteBuffer.allocate(getOffsetSize()).order(ByteOrder.LITTLE_ENDIAN);
+    protected void writePayload(GrowableByteBuffer buffer) {
+        int stringOffsetsStart = buffer.position();
+        writePlaceholderOffsets(buffer, getStringCount());
 
-        // Write to a temporary payload so we can rearrange this and put the offsets first
-        int stringsLength;
-        try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
-            stringsLength = writeStrings(payload, offsets, shrink);
-            writeStyles(payload, offsets, shrink);
-        }
+        int styleOffsetsStart = buffer.position();
+        writePlaceholderOffsets(buffer, getStyleCount());
 
-        output.write(offsets.array());
-        output.write(baos.toByteArray());
+        int stringsStart = buffer.position();
+        writeStrings(buffer, stringOffsetsStart);
+        int stringsSize = buffer.position() - stringsStart;
+
+        writeStyles(buffer, styleOffsetsStart);
+
         if (!styles.isEmpty()) {
-            header.putInt(STYLE_START_OFFSET, getHeaderSize() + getOffsetSize() + stringsLength);
+            buffer.putInt(writtenChunkOffset + STYLE_START_OFFSET,
+                    getOriginalHeaderSize() + getOffsetSize() + stringsSize);
         }
     }
 
@@ -434,21 +439,11 @@ public final class StringPoolChunk extends Chunk {
         }
 
         @Override
-        public byte[] toByteArray(boolean shrink) throws IOException {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-
-            try (LittleEndianDataOutputStream payload = new LittleEndianDataOutputStream(baos)) {
-                for (int i = 0; i < spans.getSize(); i++) {
-                    byte[] encodedSpan = spans.get(i).toByteArray(shrink);
-                    if (encodedSpan.length != StringPoolSpan.SPAN_LENGTH) {
-                        throw new IllegalStateException("Encountered a span of invalid length.");
-                    }
-                    payload.write(encodedSpan);
-                }
-                payload.writeInt(RES_STRING_POOL_SPAN_END);
+        public void writeTo(GrowableByteBuffer buffer) {
+            for (int i = 0; i < spans.getSize(); i++) {
+                spans.get(i).writeTo(buffer);
             }
-
-            return baos.toByteArray();
+            buffer.putInt(RES_STRING_POOL_SPAN_END);
         }
 
         @Override
@@ -502,12 +497,10 @@ public final class StringPoolChunk extends Chunk {
         }
 
         @Override
-        public final byte[] toByteArray(boolean shrink) {
-            ByteBuffer buffer = ByteBuffer.allocate(SPAN_LENGTH).order(ByteOrder.LITTLE_ENDIAN);
+        public void writeTo(GrowableByteBuffer buffer) {
             buffer.putInt(nameIndex);
             buffer.putInt(start);
             buffer.putInt(stop);
-            return buffer.array();
         }
 
         @Override
