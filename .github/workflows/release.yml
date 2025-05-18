@@ -1,28 +1,27 @@
 name: Publish Release
 
+on:
+  push:
+    branches: [ "release" ]
+  workflow_dispatch:
+
 concurrency:
   group: "release"
   cancel-in-progress: true
-
-on:
-  push:
-    branches:
-      - release
-  workflow_dispatch:
 
 jobs:
   publish:
     name: Build & Publish
     timeout-minutes: 5
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Setup JDK 17
-        uses: actions/setup-java@v2
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
         with:
-          java-version: 17
+          java-version: 21
           distribution: zulu
 
       - name: Build & Publish to Maven
@@ -30,12 +29,11 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
         run: |
-          cd $GITHUB_WORKSPACE
           chmod +x ./gradlew
-          CI=true ./gradlew :publishToMavenLocal :publish --no-daemon --stacktrace
+          CI=true ./gradlew :publishToMavenLocal :publish --stacktrace
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: artifacts
           path: ~/.m2/repository/
