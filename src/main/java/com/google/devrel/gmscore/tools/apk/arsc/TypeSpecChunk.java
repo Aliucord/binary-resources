@@ -88,7 +88,7 @@ public final class TypeSpecChunk extends Chunk {
      * @return The index of the new resource.
      */
     public int addResource(int flags) {
-        assert resourceFlags.add(flags);
+        resourceFlags.add(flags);
         return resourceFlags.getSize() - 1;
     }
 

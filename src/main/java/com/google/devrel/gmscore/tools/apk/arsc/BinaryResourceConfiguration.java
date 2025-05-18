@@ -24,7 +24,12 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.UnsignedBytes;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * Describes a particular resource configuration.
@@ -547,8 +552,6 @@ public class BinaryResourceConfiguration implements SerializableResource {
     public final boolean isDefault() {
         return mcc() == 0
                 && mnc() == 0
-                && Arrays.equals(language(), new byte[2])
-                && Arrays.equals(region(), new byte[2])
                 && orientation() == 0
                 && touchscreen() == 0
                 && density() == 0
@@ -564,9 +567,11 @@ public class BinaryResourceConfiguration implements SerializableResource {
                 && smallestScreenWidthDp() == 0
                 && screenWidthDp() == 0
                 && screenHeightDp() == 0
+                && screenLayout2() == 0
+                && Arrays.equals(language(), new byte[2])
+                && Arrays.equals(region(), new byte[2])
                 && Arrays.equals(localeScript(), new byte[4])
-                && Arrays.equals(localeVariant(), new byte[8])
-                && screenLayout2() == 0;
+                && Arrays.equals(localeVariant(), new byte[8]);
     }
 
     @Override
