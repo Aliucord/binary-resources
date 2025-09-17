@@ -7,7 +7,7 @@ made to be usable on Android devices directly as a lightweight library.
 `build.gradle.kts`:
 ```kt
 respositories {
-    maven("https://maven.aliucord.com/snapshots")
+    maven("https://maven.aliucord.com/releases")
 }
 dependencies {
     implementation("com.aliucord:binary-resources:2.0.1")
